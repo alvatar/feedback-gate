@@ -107,7 +107,6 @@ test('submitFeedback sends JSON payload', async () => {
         meta: { userAgent: 'node-test' },
       },
       verification: {
-        turnstileToken: 'token-123',
         honeypot: '',
       },
     },
@@ -138,7 +137,6 @@ test('submitFeedback sends JSON payload', async () => {
       meta: { userAgent: 'node-test' },
     },
     verification: {
-      turnstileToken: 'token-123',
       honeypot: '',
     },
   });

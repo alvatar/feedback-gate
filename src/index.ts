@@ -10,7 +10,6 @@ export type {
   FeedbackFieldOption,
   FeedbackGateConfig,
   FeedbackMessageConfig,
-  FeedbackProtectionConfig,
   FeedbackRequestConfig,
   FeedbackResult,
   FeedbackStrings,
@@ -18,7 +17,6 @@ export type {
   FeedbackSubmissionRequestBody,
   FeedbackTheme,
   FeedbackTriggerConfig,
-  FeedbackTurnstileConfig,
   FeedbackVerificationPayload,
   PreparedSubmission,
 } from './types.js';

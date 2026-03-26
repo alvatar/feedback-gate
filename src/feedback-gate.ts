@@ -1,6 +1,5 @@
 import { FeedbackGateError, prepareSubmission } from './payload.js';
 import { submitFeedback } from './transport.js';
-import { TurnstileController } from './turnstile.js';
 import {
   type FeedbackClassNames,
   type FeedbackCustomField,
@@ -58,7 +57,6 @@ interface MountedElements {
   overlay: HTMLDivElement;
   panel: HTMLDivElement;
   form: HTMLFormElement;
-  turnstileContainer: HTMLDivElement;
   honeypotInput: HTMLInputElement;
   status: HTMLParagraphElement;
   message: HTMLTextAreaElement;
@@ -77,7 +75,6 @@ export class FeedbackGate {
   private restoreFocusTarget: HTMLElement | null = null;
   private previousBodyOverflow = '';
   private generatedTrigger = false;
-  private turnstile: TurnstileController | null = null;
 
   constructor(private readonly config: FeedbackGateConfig) {
     if (typeof document !== 'undefined') {
@@ -114,7 +111,6 @@ export class FeedbackGate {
     this.mountedElements.overlay.hidden = false;
     this.isOpen = true;
     this.setStatus('');
-    void this.ensureProtectionReady();
 
     queueMicrotask(() => {
       this.focusFirstFocusable();
@@ -139,8 +135,6 @@ export class FeedbackGate {
 
     const { trigger, overlay } = this.mountedElements;
     trigger.removeEventListener('click', this.handleTriggerClick);
-    this.turnstile?.destroy();
-    this.turnstile = null;
     overlay.remove();
 
     if (this.generatedTrigger) {
@@ -212,7 +206,6 @@ export class FeedbackGate {
     const description = document.createElement('p');
     const dismissButton = document.createElement('button');
     const form = document.createElement('form');
-    const turnstileContainer = document.createElement('div');
     const honeypotInput = document.createElement('input');
     const messageField = document.createElement('div');
     const messageLabel = document.createElement('label');
@@ -261,9 +254,6 @@ export class FeedbackGate {
     form.className = joinClasses('feedback-gate-form', this.config.classes?.form);
     form.noValidate = true;
 
-    turnstileContainer.className = 'feedback-gate-turnstile';
-    turnstileContainer.hidden = !this.config.protection?.turnstile;
-
     honeypotInput.type = 'text';
     honeypotInput.name = 'hp';
     honeypotInput.tabIndex = -1;
@@ -307,7 +297,7 @@ export class FeedbackGate {
     header.append(headerCopy, dismissButton);
     messageField.append(messageLabel, messageInput);
     actions.append(cancelButton, submitButton);
-    form.append(turnstileContainer, honeypotInput, messageField, fieldsContainer, status, actions);
+    form.append(honeypotInput, messageField, fieldsContainer, status, actions);
     panel.append(header, form);
     overlay.append(panel);
     document.body.appendChild(overlay);
@@ -327,7 +317,6 @@ export class FeedbackGate {
       overlay,
       panel,
       form,
-      turnstileContainer,
       honeypotInput,
       status,
       message: messageInput,
@@ -465,38 +454,9 @@ export class FeedbackGate {
     return {
       payload,
       verification: {
-        turnstileToken: await this.getTurnstileToken(),
         honeypot: this.mountedElements?.honeypotInput.value ?? '',
       },
     };
-  }
-
-  private async getTurnstileToken(): Promise<string | undefined> {
-    if (!this.config.protection?.turnstile) {
-      return undefined;
-    }
-
-    await this.ensureProtectionReady();
-    if (!this.turnstile) {
-      throw new Error('Turnstile protection is not available.');
-    }
-
-    return await this.turnstile.getToken();
-  }
-
-  private async ensureProtectionReady(): Promise<void> {
-    if (!this.config.protection?.turnstile || !this.mountedElements) {
-      return;
-    }
-
-    if (!this.turnstile) {
-      this.turnstile = new TurnstileController(
-        this.mountedElements.turnstileContainer,
-        this.config.protection.turnstile,
-      );
-    }
-
-    await this.turnstile.ensureWidget();
   }
 
   private setSubmitting(submitting: boolean): void {
@@ -799,8 +759,7 @@ function ensureStyles(): void {
     }
 
     .feedback-gate-overlay[hidden],
-    .feedback-gate-status[hidden],
-    .feedback-gate-turnstile[hidden] {
+    .feedback-gate-status[hidden] {
       display: none !important;
     }
 
@@ -841,10 +800,6 @@ function ensureStyles(): void {
     .feedback-gate-form {
       display: grid;
       gap: 24px;
-    }
-
-    .feedback-gate-turnstile {
-      min-height: 0;
     }
 
     .feedback-gate-honeypot {

@@ -1,5 +1,3 @@
-const TURNSTILE_SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
-
 export async function handleFeedbackRequest(request, env, deps = {}) {
   const config = normalizeEnvironment(env);
   const fetchImpl = deps.fetchImpl ?? fetch;
@@ -153,35 +151,6 @@ export function validateEnvelope(envelope) {
   }
 
   return null;
-}
-
-export async function verifyTurnstile({ secretKey, token, remoteIp, fetchImpl = fetch }) {
-  if (!secretKey) {
-    throw new Error('TURNSTILE_SECRET_KEY is missing.');
-  }
-
-  const body = new URLSearchParams({
-    secret: secretKey,
-    response: token,
-  });
-
-  if (remoteIp) {
-    body.set('remoteip', remoteIp);
-  }
-
-  const response = await fetchImpl(TURNSTILE_SITEVERIFY_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: body.toString(),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Turnstile siteverify failed with status ${response.status}.`);
-  }
-
-  return await response.json();
 }
 
 export async function forwardToAppsScript({ appsScriptUrl, appsScriptSecret, payload, fetchImpl = fetch }) {

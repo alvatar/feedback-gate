@@ -8,7 +8,6 @@ import {
   normalizeEnvelope,
   normalizeOrigins,
   validateEnvelope,
-  verifyTurnstile,
 } from '../cloudflare/feedback-core.mjs';
 
 test('normalizeOrigins splits comma-separated values', () => {
@@ -19,9 +18,9 @@ test('normalizeOrigins splits comma-separated values', () => {
 });
 
 test('normalizeEnvelope unwraps request bodies and raw payloads', () => {
-  assert.deepEqual(normalizeEnvelope({ payload: { message: 'x' }, verification: { turnstileToken: 't' } }), {
+  assert.deepEqual(normalizeEnvelope({ payload: { message: 'x' }, verification: { honeypot: '' } }), {
     payload: { message: 'x' },
-    verification: { turnstileToken: 't' },
+    verification: { honeypot: '' },
   });
 
   assert.deepEqual(normalizeEnvelope({ message: 'x' }), {
@@ -37,28 +36,6 @@ test('validateEnvelope requires message and rejects honeypot spam', () => {
     validateEnvelope({ payload: { message: 'ok' }, verification: { honeypot: 'bot' } }),
     'Spam rejected.',
   );
-});
-
-test('verifyTurnstile posts to Cloudflare siteverify', async () => {
-  let capturedBody = '';
-
-  const result = await verifyTurnstile({
-    secretKey: 'secret',
-    token: 'token-123',
-    remoteIp: '127.0.0.1',
-    fetchImpl: async (_url, init) => {
-      capturedBody = String(init.body);
-      return new Response(
-        JSON.stringify({ success: true, action: 'feedback_submit', 'error-codes': [] }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      );
-    },
-  });
-
-  assert.equal(result.success, true);
-  assert.match(capturedBody, /secret=secret/);
-  assert.match(capturedBody, /response=token-123/);
-  assert.match(capturedBody, /remoteip=127.0.0.1/);
 });
 
 test('forwardToAppsScript appends the shared secret and forwards the payload', async () => {
@@ -109,7 +86,6 @@ test('handleFeedbackRequest rate limits and forwards upstream', async () => {
         page: '/pricing',
         message: 'Hello',
         fields: { type: 'bug' },
-        user: null,
         meta: {},
       },
       verification: {
