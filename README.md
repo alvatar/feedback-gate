@@ -17,7 +17,9 @@ Minimal embeddable TypeScript feedback modal designed to submit structured feedb
 - rate limit in Worker (`origin + IP`)
 - Apps Script protected by shared secret; browser does not post to it directly
 
-## Deploy
+## 1. Set up feedback-gate service
+
+Do this once for the shared backend/service.
 
 1. Create a Google Sheet and Apps Script project.
 2. Copy `examples/google-apps-script/Code.js` into Apps Script.
@@ -26,22 +28,28 @@ Minimal embeddable TypeScript feedback modal designed to submit structured feedb
    - `NOTIFY_EMAIL`
    - `SHARED_SECRET`
 4. Deploy Apps Script as a web app and copy the URL.
-5. In `cloudflare/wrangler.toml`, set:
+5. Configure the Cloudflare Worker with:
    - `APPS_SCRIPT_URL`
    - `ALLOWED_ORIGINS`
    - `RATE_LIMIT_MAX`
    - `RATE_LIMIT_WINDOW_SEC`
-6. Set the Worker secret:
-   - `wrangler secret put APPS_SCRIPT_SECRET`
+6. Set Worker secret `APPS_SCRIPT_SECRET`.
    - value must match Apps Script `SHARED_SECRET`
 7. Deploy the Worker.
-8. On your site, point the widget `endpoint` to the Worker URL.
+8. If you want a custom hostname, point DNS at Cloudflare and bind a route such as `feedback.example.com`.
 
-## Customization
+## 2. Integrate feedback-gate in a site
+
+Do this in each frontend/project that uses the service.
+
+1. Import `FeedbackGate`.
+2. Set `endpoint` to the deployed Worker URL.
+3. Attach it to an existing button or let it render its own trigger.
+4. Configure fields, text, and theme.
 
 ```js
 new FeedbackGate({
-  endpoint: 'https://your-worker.workers.dev',
+  endpoint: 'https://feedback.example.com',
   target: '#feedback-button',
   strings: {
     title: 'Product feedback',
