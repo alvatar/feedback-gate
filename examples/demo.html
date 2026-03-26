@@ -114,7 +114,7 @@
       <section class="grid">
         <article class="card">
           <h2>What this demo exercises</h2>
-          <p>Existing trigger attachment, auth hook, custom fields, request query params, and payload transport.</p>
+          <p>Existing trigger attachment, login step, email sharing toggle, custom fields, request query params, and payload transport.</p>
           <pre id="demo-state">Waiting for submission…</pre>
         </article>
 
@@ -130,6 +130,7 @@
 
       const state = document.querySelector('#demo-state');
       const responsePanel = document.querySelector('#demo-response');
+      let sessionUser = null;
 
       const originalFetch = window.fetch.bind(window);
       window.fetch = async (input, init) => {
@@ -177,15 +178,45 @@
         },
         auth: {
           required: true,
-          getUser: async () => ({
-            id: 'demo-user-1',
-            email: 'demo@example.com',
-            name: 'Demo User',
-            provider: 'demo',
-          }),
+          providers: [
+            { id: 'google', label: 'Continue with Google' },
+            { id: 'email', label: 'Continue with email' },
+            { id: 'facebook', label: 'Continue with Facebook' },
+          ],
+          getUser: async () => sessionUser,
+          login: async (providerId) => {
+            const identities = {
+              google: {
+                id: 'google-user-1',
+                email: 'demo@gmail.com',
+                name: 'Demo User',
+                provider: 'google',
+              },
+              email: {
+                id: 'email-user-1',
+                email: 'person@example.com',
+                name: 'Email User',
+                provider: 'email',
+              },
+              facebook: {
+                id: 'facebook-user-1',
+                email: 'demo@facebook.example',
+                name: 'FB User',
+                provider: 'facebook',
+              },
+            };
+
+            await new Promise((resolve) => setTimeout(resolve, 350));
+            sessionUser = identities[providerId] ?? null;
+            return sessionUser;
+          },
           getHeaders: async () => ({
-            Authorization: 'Bearer demo-token',
+            Authorization: `Bearer demo-token-${sessionUser?.provider ?? 'guest'}`,
           }),
+        },
+        privacy: {
+          shareEmailByDefault: true,
+          allowUserToggle: true,
         },
         strings: {
           title: 'Product feedback',

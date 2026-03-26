@@ -9,6 +9,7 @@ import {
 export interface CreatePayloadInput {
   message: string;
   fields: Record<string, unknown>;
+  user?: FeedbackUser | null;
   auth?: FeedbackAuthConfig;
   context?: FeedbackContextConfig;
   requestHeaders?: Record<string, string>;
@@ -29,7 +30,7 @@ export async function prepareSubmission(input: CreatePayloadInput): Promise<Prep
     throw new FeedbackGateError('Message is required.');
   }
 
-  const user = await resolveUser(input.auth);
+  const user = input.user !== undefined ? input.user : await resolveUser(input.auth);
   if (input.auth?.required && !user) {
     throw new FeedbackGateError('Authentication is required before submitting feedback.');
   }

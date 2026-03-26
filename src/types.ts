@@ -59,10 +59,22 @@ export interface FeedbackUser {
   [key: string]: unknown;
 }
 
+export interface FeedbackAuthProvider {
+  id: string;
+  label: string;
+}
+
 export interface FeedbackAuthConfig {
   required?: boolean;
+  providers?: FeedbackAuthProvider[];
   getUser?: () => Promise<FeedbackUser | null> | FeedbackUser | null;
   getHeaders?: () => Promise<Record<string, string>> | Record<string, string>;
+  login?: (providerId: string) => Promise<FeedbackUser | null | void> | FeedbackUser | null | void;
+}
+
+export interface FeedbackPrivacyConfig {
+  shareEmailByDefault?: boolean;
+  allowUserToggle?: boolean;
 }
 
 export interface FeedbackMessageConfig {
@@ -127,6 +139,11 @@ export interface FeedbackStrings {
   sendingLabel?: string;
   genericError?: string;
   loginRequired?: string;
+  authTitle?: string;
+  authDescription?: string;
+  checkingAuthLabel?: string;
+  signedInPrefix?: string;
+  shareEmailLabel?: string;
 }
 
 export interface FeedbackResult {
@@ -141,6 +158,7 @@ export interface FeedbackGateConfig {
   fields?: FeedbackField[];
   message?: FeedbackMessageConfig;
   auth?: FeedbackAuthConfig;
+  privacy?: FeedbackPrivacyConfig;
   request?: FeedbackRequestConfig;
   context?: FeedbackContextConfig;
   strings?: FeedbackStrings;

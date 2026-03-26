@@ -3,6 +3,7 @@ export { FeedbackGateError, createSubmissionPayload, prepareSubmission } from '.
 export { buildEndpointUrl, submitFeedback } from './transport.js';
 export type {
   FeedbackAuthConfig,
+  FeedbackAuthProvider,
   FeedbackClassNames,
   FeedbackContextConfig,
   FeedbackCustomField,
@@ -11,6 +12,7 @@ export type {
   FeedbackFieldOption,
   FeedbackGateConfig,
   FeedbackMessageConfig,
+  FeedbackPrivacyConfig,
   FeedbackRequestConfig,
   FeedbackResult,
   FeedbackStrings,

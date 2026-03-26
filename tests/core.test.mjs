@@ -76,6 +76,31 @@ test('prepareSubmission trims message and merges request/auth headers', async ()
   assert.equal(prepared.headers.Authorization, 'Bearer token');
 });
 
+test('prepareSubmission uses the explicit user when provided', async () => {
+  const prepared = await prepareSubmission({
+    message: 'Identity should come from the caller',
+    fields: {},
+    user: {
+      id: 'provider-user-1',
+      provider: 'google',
+      name: 'Visible Name',
+    },
+    auth: {
+      required: true,
+      getUser: () => ({
+        id: 'different-user',
+        email: 'wrong@example.com',
+      }),
+    },
+  });
+
+  assert.deepEqual(prepared.payload.user, {
+    id: 'provider-user-1',
+    provider: 'google',
+    name: 'Visible Name',
+  });
+});
+
 test('prepareSubmission rejects missing message', async () => {
   await assert.rejects(
     prepareSubmission({
