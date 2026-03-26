@@ -14,16 +14,9 @@
       new FeedbackGate({
         endpoint: 'https://feedback-gate.YOUR_SUBDOMAIN.workers.dev',
         target: '#feedback-button',
-        protection: {
-          turnstile: {
-            siteKey: 'REPLACE_WITH_TURNSTILE_SITE_KEY',
-            action: 'feedback_submit',
-          },
-        },
         strings: {
           title: 'Product feedback',
           description: 'Short, specific feedback is best.',
-          authDescription: "Your identity won't be shared. This is just to avoid spam",
         },
         fields: [
           {

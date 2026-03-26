@@ -30,15 +30,11 @@ test('normalizeEnvelope unwraps request bodies and raw payloads', () => {
   });
 });
 
-test('validateEnvelope requires message and turnstile token', () => {
+test('validateEnvelope requires message and rejects honeypot spam', () => {
+  assert.equal(validateEnvelope({ payload: { message: 'ok' }, verification: {} }), null);
+  assert.equal(validateEnvelope({ payload: { message: '' }, verification: {} }), 'Message is required.');
   assert.equal(
-    validateEnvelope({ payload: { message: 'ok' }, verification: { turnstileToken: 'token' } }),
-    null,
-  );
-  assert.equal(validateEnvelope({ payload: { message: '' }, verification: { turnstileToken: 'token' } }), 'Message is required.');
-  assert.equal(validateEnvelope({ payload: { message: 'ok' }, verification: {} }), 'Turnstile token is required.');
-  assert.equal(
-    validateEnvelope({ payload: { message: 'ok' }, verification: { turnstileToken: 'token', honeypot: 'bot' } }),
+    validateEnvelope({ payload: { message: 'ok' }, verification: { honeypot: 'bot' } }),
     'Spam rejected.',
   );
 });
@@ -97,7 +93,7 @@ test('InMemoryRateLimiter rejects after the configured burst', async () => {
   assert.ok(third.retryAfterSec > 0);
 });
 
-test('handleFeedbackRequest verifies Turnstile, rate limits, and forwards upstream', async () => {
+test('handleFeedbackRequest rate limits and forwards upstream', async () => {
   const upstreamCalls = [];
   const request = new Request('https://worker.example/feedback', {
     method: 'POST',
@@ -117,7 +113,6 @@ test('handleFeedbackRequest verifies Turnstile, rate limits, and forwards upstre
         meta: {},
       },
       verification: {
-        turnstileToken: 'token-123',
         honeypot: '',
       },
     }),
@@ -127,7 +122,6 @@ test('handleFeedbackRequest verifies Turnstile, rate limits, and forwards upstre
     request,
     {
       ALLOWED_ORIGINS: 'https://app.example.com',
-      TURNSTILE_SECRET_KEY: 'turnstile-secret',
       APPS_SCRIPT_URL: 'https://script.google.com/macros/s/demo/exec',
       APPS_SCRIPT_SECRET: 'apps-secret',
       RATE_LIMIT_MAX: '5',
@@ -136,15 +130,7 @@ test('handleFeedbackRequest verifies Turnstile, rate limits, and forwards upstre
     {
       rateLimiter: new InMemoryRateLimiter(),
       fetchImpl: async (url, init) => {
-        const target = String(url);
-        if (target.includes('siteverify')) {
-          return new Response(JSON.stringify({ success: true, action: 'feedback_submit' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-
-        upstreamCalls.push({ url: target, body: JSON.parse(String(init.body)) });
+        upstreamCalls.push({ url: String(url), body: JSON.parse(String(init.body)) });
         return new Response(JSON.stringify({ ok: true, stored: true }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
@@ -157,10 +143,12 @@ test('handleFeedbackRequest verifies Turnstile, rate limits, and forwards upstre
   assert.equal(upstreamCalls.length, 1);
   assert.equal(upstreamCalls[0].url, 'https://script.google.com/macros/s/demo/exec?secret=apps-secret');
   assert.equal(upstreamCalls[0].body.message, 'Hello');
-  assert.equal(upstreamCalls[0].body.meta.verifiedBy, 'cloudflare-turnstile');
+  assert.equal(upstreamCalls[0].body.meta.verifiedBy, 'cloudflare-worker');
+  assert.equal(upstreamCalls[0].body.meta.verificationMode, 'rate-limit-plus-honeypot');
+  assert.match(upstreamCalls[0].body.meta.remoteIpHash, /^[a-f0-9]{64}$/);
 });
 
-test('handleFeedbackRequest rejects invalid origins and missing turnstile tokens', async () => {
+test('handleFeedbackRequest rejects invalid origins and honeypot spam', async () => {
   const invalidOriginResponse = await handleFeedbackRequest(
     new Request('https://worker.example/feedback', {
       method: 'POST',
@@ -168,11 +156,10 @@ test('handleFeedbackRequest rejects invalid origins and missing turnstile tokens
         Origin: 'https://evil.example.com',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ payload: { message: 'Hello' }, verification: { turnstileToken: 'token' } }),
+      body: JSON.stringify({ payload: { message: 'Hello' }, verification: { honeypot: '' } }),
     }),
     {
       ALLOWED_ORIGINS: 'https://app.example.com',
-      TURNSTILE_SECRET_KEY: 'turnstile-secret',
       APPS_SCRIPT_URL: 'https://script.google.com/macros/s/demo/exec',
       APPS_SCRIPT_SECRET: 'apps-secret',
     },
@@ -181,23 +168,22 @@ test('handleFeedbackRequest rejects invalid origins and missing turnstile tokens
 
   assert.equal(invalidOriginResponse.status, 403);
 
-  const missingTokenResponse = await handleFeedbackRequest(
+  const honeypotResponse = await handleFeedbackRequest(
     new Request('https://worker.example/feedback', {
       method: 'POST',
       headers: {
         Origin: 'https://app.example.com',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ payload: { message: 'Hello' }, verification: {} }),
+      body: JSON.stringify({ payload: { message: 'Hello' }, verification: { honeypot: 'bot' } }),
     }),
     {
       ALLOWED_ORIGINS: 'https://app.example.com',
-      TURNSTILE_SECRET_KEY: 'turnstile-secret',
       APPS_SCRIPT_URL: 'https://script.google.com/macros/s/demo/exec',
       APPS_SCRIPT_SECRET: 'apps-secret',
     },
     { rateLimiter: new InMemoryRateLimiter(), fetchImpl: async () => new Response('{}', { status: 200 }) },
   );
 
-  assert.equal(missingTokenResponse.status, 400);
+  assert.equal(honeypotResponse.status, 400);
 });

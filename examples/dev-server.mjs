@@ -25,7 +25,6 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/feedback') {
       const response = await handleFeedbackRequest(await toRequest(req, url), {
         ALLOWED_ORIGINS: `http://127.0.0.1:${PORT},http://localhost:${PORT}`,
-        TURNSTILE_SECRET_KEY: '1x0000000000000000000000000000000AA',
         APPS_SCRIPT_URL: `http://127.0.0.1:${PORT}/api/apps-script`,
         APPS_SCRIPT_SECRET: APPS_SCRIPT_SECRET,
         RATE_LIMIT_MAX: '5',

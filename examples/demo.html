@@ -97,8 +97,8 @@
       <section class="hero">
         <h1>feedback-gate demo</h1>
         <p>
-          This is the real protected flow: browser widget → Turnstile → worker endpoint → Apps Script sink.
-          The local dev server uses Cloudflare's public Turnstile test key and a local Apps Script mock.
+          This is the frictionless flow: browser widget → worker endpoint → Apps Script sink.
+          The local dev server uses the same worker checks as production and a local Apps Script mock.
         </p>
         <div class="controls">
           <button id="feedback-button" class="button" type="button">Open feedback modal</button>
@@ -127,12 +127,6 @@
       new FeedbackGate({
         endpoint: '/api/feedback',
         target: '#feedback-button',
-        protection: {
-          turnstile: {
-            siteKey: '1x00000000000000000000AA',
-            action: 'feedback_submit',
-          },
-        },
         strings: {
           title: 'Product feedback',
           description: 'Send a short report. This local demo uses the real worker flow.',

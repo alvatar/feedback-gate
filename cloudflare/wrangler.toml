@@ -19,5 +19,4 @@ RATE_LIMIT_WINDOW_SEC = "300"
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/REPLACE_ME/exec"
 
 # Required secrets:
-# wrangler secret put TURNSTILE_SECRET_KEY
 # wrangler secret put APPS_SCRIPT_SECRET

@@ -72,31 +72,13 @@ export async function handleFeedbackRequest(request, env, deps = {}) {
     }
   }
 
-  const turnstile = await verifyTurnstile({
-    secretKey: config.turnstileSecretKey,
-    token: normalized.verification.turnstileToken,
-    remoteIp,
-    fetchImpl,
-  });
-
-  if (!turnstile.success) {
-    return jsonResponse(
-      {
-        ok: false,
-        error: 'Turnstile verification failed.',
-        codes: turnstile.errorCodes,
-      },
-      400,
-      buildCorsHeaders(request, config.allowedOrigins),
-    );
-  }
-
   const forwardedPayload = {
     ...normalized.payload,
     meta: {
       ...(normalized.payload.meta ?? {}),
-      verifiedBy: 'cloudflare-turnstile',
-      turnstileAction: turnstile.action ?? '',
+      verifiedBy: 'cloudflare-worker',
+      verificationMode: 'rate-limit-plus-honeypot',
+      remoteIpHash: await sha256(remoteIp || 'unknown'),
     },
   };
 
@@ -125,7 +107,6 @@ export async function handleFeedbackRequest(request, env, deps = {}) {
 export function normalizeEnvironment(env) {
   return {
     allowedOrigins: normalizeOrigins(env.ALLOWED_ORIGINS ?? ''),
-    turnstileSecretKey: String(env.TURNSTILE_SECRET_KEY ?? '').trim(),
     appsScriptUrl: String(env.APPS_SCRIPT_URL ?? '').trim(),
     appsScriptSecret: String(env.APPS_SCRIPT_SECRET ?? '').trim(),
     rateLimitMax: parsePositiveInteger(env.RATE_LIMIT_MAX, 5),
@@ -169,10 +150,6 @@ export function validateEnvelope(envelope) {
 
   if (typeof envelope.verification?.honeypot === 'string' && envelope.verification.honeypot.trim() !== '') {
     return 'Spam rejected.';
-  }
-
-  if (typeof envelope.verification?.turnstileToken !== 'string' || envelope.verification.turnstileToken.trim() === '') {
-    return 'Turnstile token is required.';
   }
 
   return null;
@@ -289,6 +266,12 @@ export class InMemoryRateLimiter {
 function parsePositiveInteger(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function sha256(value) {
+  const data = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 async function safeParseJson(response) {
