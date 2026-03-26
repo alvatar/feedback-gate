@@ -1,9 +1,11 @@
-import { handleFeedbackRequest } from './feedback-core.mjs';
+import { handleFeedbackRequest, InMemoryRateLimiter } from './feedback-core.mjs';
+
+const fallbackRateLimiter = new InMemoryRateLimiter();
 
 export default {
   async fetch(request, env) {
     return await handleFeedbackRequest(request, env, {
-      rateLimiter: createDurableRateLimiter(env.FEEDBACK_RATE_LIMITER),
+      rateLimiter: createRateLimiter(env.FEEDBACK_RATE_LIMITER),
     });
   },
 };
@@ -37,15 +39,28 @@ export class FeedbackRateLimiter {
   }
 }
 
-function createDurableRateLimiter(namespace) {
+export function createRateLimiter(namespace, fallback = fallbackRateLimiter) {
+  if (!namespace) {
+    return fallback;
+  }
+
   return {
-    async check({ key, max, windowSec }) {
-      const objectId = namespace.idFromName(await sha256(key));
-      const stub = namespace.get(objectId);
-      const response = await stub.fetch(`https://rate-limit.local/check?max=${max}&windowSec=${windowSec}`, {
-        method: 'POST',
-      });
-      return await response.json();
+    async check({ key, max, windowSec, now }) {
+      try {
+        const objectId = namespace.idFromName(await sha256(key));
+        const stub = namespace.get(objectId);
+        const response = await stub.fetch(`https://rate-limit.local/check?max=${max}&windowSec=${windowSec}`, {
+          method: 'POST',
+        });
+
+        if (!response.ok) {
+          throw new Error(`Rate limiter failed with status ${response.status}.`);
+        }
+
+        return await response.json();
+      } catch {
+        return await fallback.check({ key, max, windowSec, now });
+      }
     },
   };
 }

@@ -80,26 +80,44 @@ export async function handleFeedbackRequest(request, env, deps = {}) {
     },
   };
 
-  const upstreamResponse = await forwardToAppsScript({
-    appsScriptUrl: config.appsScriptUrl,
-    appsScriptSecret: config.appsScriptSecret,
-    payload: forwardedPayload,
-    fetchImpl,
-  });
+  let upstreamResponse;
+  let responsePayload;
 
-  const responsePayload = await safeParseJson(upstreamResponse);
-  if (!upstreamResponse.ok) {
+  try {
+    upstreamResponse = await forwardToAppsScript({
+      appsScriptUrl: config.appsScriptUrl,
+      appsScriptSecret: config.appsScriptSecret,
+      payload: forwardedPayload,
+      fetchImpl,
+    });
+    responsePayload = await safeParseJson(upstreamResponse);
+  } catch (error) {
     return jsonResponse(
       {
         ok: false,
-        error: responsePayload?.error || `Upstream storage failed with status ${upstreamResponse.status}.`,
+        error: resolveUpstreamErrorMessage(error),
+      },
+      isConfigurationError(error) ? 500 : 502,
+      buildCorsHeaders(request, config.allowedOrigins),
+    );
+  }
+
+  if (!upstreamResponse.ok || !responsePayload || responsePayload.ok !== true) {
+    return jsonResponse(
+      {
+        ok: false,
+        error:
+          responsePayload?.error ||
+          (!upstreamResponse.ok
+            ? `Upstream storage failed with status ${upstreamResponse.status}.`
+            : 'Upstream storage returned an invalid success response.'),
       },
       502,
       buildCorsHeaders(request, config.allowedOrigins),
     );
   }
 
-  return jsonResponse(responsePayload ?? { ok: true }, 200, buildCorsHeaders(request, config.allowedOrigins));
+  return jsonResponse(responsePayload, 200, buildCorsHeaders(request, config.allowedOrigins));
 }
 
 export function normalizeEnvironment(env) {
@@ -235,6 +253,18 @@ export class InMemoryRateLimiter {
 function parsePositiveInteger(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function isConfigurationError(error) {
+  return error instanceof Error && /APPS_SCRIPT_(URL|SECRET) is missing\./.test(error.message);
+}
+
+function resolveUpstreamErrorMessage(error) {
+  if (error instanceof Error && error.message.trim() !== '') {
+    return error.message;
+  }
+
+  return 'Upstream storage request failed.';
 }
 
 async function sha256(value) {

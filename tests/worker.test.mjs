@@ -9,6 +9,7 @@ import {
   normalizeOrigins,
   validateEnvelope,
 } from '../cloudflare/feedback-core.mjs';
+import { createRateLimiter } from '../cloudflare/worker.mjs';
 
 test('normalizeOrigins splits comma-separated values', () => {
   assert.deepEqual(normalizeOrigins('https://a.example, https://b.example ,, '), [
@@ -68,6 +69,42 @@ test('InMemoryRateLimiter rejects after the configured burst', async () => {
   assert.equal(second.allowed, true);
   assert.equal(third.allowed, false);
   assert.ok(third.retryAfterSec > 0);
+});
+
+test('createRateLimiter falls back when durable object binding is missing', async () => {
+  const fallback = new InMemoryRateLimiter();
+  const limiter = createRateLimiter(undefined, fallback);
+
+  const first = await limiter.check({ key: 'fallback', max: 1, windowSec: 60, now: 1000 });
+  const second = await limiter.check({ key: 'fallback', max: 1, windowSec: 60, now: 2000 });
+
+  assert.equal(first.allowed, true);
+  assert.equal(second.allowed, false);
+});
+
+test('createRateLimiter falls back when durable object calls fail', async () => {
+  const fallback = new InMemoryRateLimiter();
+  const limiter = createRateLimiter(
+    {
+      idFromName() {
+        return 'id';
+      },
+      get() {
+        return {
+          async fetch() {
+            throw new Error('boom');
+          },
+        };
+      },
+    },
+    fallback,
+  );
+
+  const first = await limiter.check({ key: 'broken-do', max: 1, windowSec: 60, now: 1000 });
+  const second = await limiter.check({ key: 'broken-do', max: 1, windowSec: 60, now: 2000 });
+
+  assert.equal(first.allowed, true);
+  assert.equal(second.allowed, false);
 });
 
 test('handleFeedbackRequest rate limits and forwards upstream', async () => {
@@ -162,4 +199,90 @@ test('handleFeedbackRequest rejects invalid origins and honeypot spam', async ()
   );
 
   assert.equal(honeypotResponse.status, 400);
+});
+
+test('handleFeedbackRequest rejects upstream logical failures', async () => {
+  const response = await handleFeedbackRequest(
+    new Request('https://worker.example/feedback', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://app.example.com',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ payload: { message: 'Hello' }, verification: { honeypot: '' } }),
+    }),
+    {
+      ALLOWED_ORIGINS: 'https://app.example.com',
+      APPS_SCRIPT_URL: 'https://script.google.com/macros/s/demo/exec',
+      APPS_SCRIPT_SECRET: 'apps-secret',
+    },
+    {
+      rateLimiter: new InMemoryRateLimiter(),
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ ok: false, error: 'Sheet append failed.' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    },
+  );
+
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), {
+    ok: false,
+    error: 'Sheet append failed.',
+  });
+});
+
+test('handleFeedbackRequest rejects invalid upstream success payloads', async () => {
+  const response = await handleFeedbackRequest(
+    new Request('https://worker.example/feedback', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://app.example.com',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ payload: { message: 'Hello' }, verification: { honeypot: '' } }),
+    }),
+    {
+      ALLOWED_ORIGINS: 'https://app.example.com',
+      APPS_SCRIPT_URL: 'https://script.google.com/macros/s/demo/exec',
+      APPS_SCRIPT_SECRET: 'apps-secret',
+    },
+    {
+      rateLimiter: new InMemoryRateLimiter(),
+      fetchImpl: async () => new Response('<html>oops</html>', { status: 200 }),
+    },
+  );
+
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), {
+    ok: false,
+    error: 'Upstream storage returned an invalid success response.',
+  });
+});
+
+test('handleFeedbackRequest reports missing upstream config clearly', async () => {
+  const response = await handleFeedbackRequest(
+    new Request('https://worker.example/feedback', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://app.example.com',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ payload: { message: 'Hello' }, verification: { honeypot: '' } }),
+    }),
+    {
+      ALLOWED_ORIGINS: 'https://app.example.com',
+      APPS_SCRIPT_SECRET: 'apps-secret',
+    },
+    {
+      rateLimiter: new InMemoryRateLimiter(),
+    },
+  );
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), {
+    ok: false,
+    error: 'APPS_SCRIPT_URL is missing.',
+  });
 });
