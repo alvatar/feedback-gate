@@ -17,6 +17,26 @@ Minimal embeddable TypeScript feedback modal designed to submit structured feedb
 - rate limit in Worker (`origin + IP`)
 - Apps Script protected by shared secret; browser does not post to it directly
 
+## Deploy
+
+1. Create a Google Sheet and Apps Script project.
+2. Copy `examples/google-apps-script/Code.js` into Apps Script.
+3. Set in Apps Script:
+   - `SHEET_NAME`
+   - `NOTIFY_EMAIL`
+   - `SHARED_SECRET`
+4. Deploy Apps Script as a web app and copy the URL.
+5. In `cloudflare/wrangler.toml`, set:
+   - `APPS_SCRIPT_URL`
+   - `ALLOWED_ORIGINS`
+   - `RATE_LIMIT_MAX`
+   - `RATE_LIMIT_WINDOW_SEC`
+6. Set the Worker secret:
+   - `wrangler secret put APPS_SCRIPT_SECRET`
+   - value must match Apps Script `SHARED_SECRET`
+7. Deploy the Worker.
+8. On your site, point the widget `endpoint` to the Worker URL.
+
 ## Notes
 
 - Apps Script code lives in this repo at `examples/google-apps-script/Code.js`, then gets copied/deployed into a real Google Apps Script project.
