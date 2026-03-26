@@ -10,11 +10,13 @@
    - deploy as web app
 
 3. In the Worker config:
+   - set `ALLOWED_HOSTS` to the public hostname you actually want to serve, e.g. `feedback.example.com`
    - set `ALLOWED_ORIGINS` to the site origin(s) that can embed the widget
    - wildcard subdomains are supported, e.g. `https://*.impactmesh.xyz`
    - tune `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_SEC` as needed
 
 4. On the site:
-   - set widget `endpoint` to the Worker URL
+   - set widget `endpoint` to the public custom-domain URL
    - keep the form frictionless for the user
    - keep Apps Script private behind the Worker only
+   - do not use the `workers.dev` hostname in production

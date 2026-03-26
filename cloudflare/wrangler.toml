@@ -1,7 +1,7 @@
 name = "feedback-gate"
 main = "worker.mjs"
 compatibility_date = "2026-03-26"
-workers_dev = true
+workers_dev = false
 
 [durable_objects]
 bindings = [
@@ -13,6 +13,7 @@ tag = "v1"
 new_sqlite_classes = ["FeedbackRateLimiter"]
 
 [vars]
+ALLOWED_HOSTS = "feedback.example.com"
 ALLOWED_ORIGINS = "http://127.0.0.1:4173,http://localhost:4173,https://*.impactmesh.xyz"
 RATE_LIMIT_MAX = "5"
 RATE_LIMIT_WINDOW_SEC = "300"

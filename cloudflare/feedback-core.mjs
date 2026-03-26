@@ -3,6 +3,11 @@ export async function handleFeedbackRequest(request, env, deps = {}) {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const rateLimiter = deps.rateLimiter ?? null;
   const now = deps.now ?? (() => Date.now());
+  const requestUrl = new URL(request.url);
+
+  if (!isHostAllowed(requestUrl.hostname, config.allowedHosts)) {
+    return jsonResponse({ ok: false, error: 'Not found.' }, 404);
+  }
 
   if (request.method === 'OPTIONS') {
     return new Response(null, {
@@ -122,6 +127,7 @@ export async function handleFeedbackRequest(request, env, deps = {}) {
 
 export function normalizeEnvironment(env) {
   return {
+    allowedHosts: normalizeHosts(env.ALLOWED_HOSTS ?? ''),
     allowedOrigins: normalizeOrigins(env.ALLOWED_ORIGINS ?? ''),
     appsScriptUrl: String(env.APPS_SCRIPT_URL ?? '').trim(),
     appsScriptSecret: String(env.APPS_SCRIPT_SECRET ?? '').trim(),
@@ -134,6 +140,13 @@ export function normalizeOrigins(value) {
   return String(value)
     .split(',')
     .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+export function normalizeHosts(value) {
+  return String(value)
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
 }
 
@@ -219,6 +232,14 @@ export function isOriginAllowed(origin, allowedOrigins) {
   }
 
   return allowedOrigins.length === 0 || allowedOrigins.some((pattern) => matchesOriginPattern(origin, pattern));
+}
+
+export function isHostAllowed(hostname, allowedHosts) {
+  if (!hostname) {
+    return allowedHosts.length === 0;
+  }
+
+  return allowedHosts.length === 0 || allowedHosts.includes(String(hostname).toLowerCase());
 }
 
 export function matchesOriginPattern(origin, pattern) {

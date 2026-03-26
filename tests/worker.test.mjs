@@ -6,8 +6,10 @@ import {
   buildCorsHeaders,
   forwardToAppsScript,
   handleFeedbackRequest,
+  isHostAllowed,
   matchesOriginPattern,
   normalizeEnvelope,
+  normalizeHosts,
   normalizeOrigins,
   resolveAllowedOrigin,
   validateEnvelope,
@@ -19,6 +21,19 @@ test('normalizeOrigins splits comma-separated values', () => {
     'https://a.example',
     'https://b.example',
   ]);
+});
+
+test('normalizeHosts splits comma-separated values and lowercases them', () => {
+  assert.deepEqual(normalizeHosts('Feedback.Impactmesh.xyz, api.example.com ,, '), [
+    'feedback.impactmesh.xyz',
+    'api.example.com',
+  ]);
+});
+
+test('isHostAllowed enforces exact host allowlists', () => {
+  assert.equal(isHostAllowed('feedback.impactmesh.xyz', ['feedback.impactmesh.xyz']), true);
+  assert.equal(isHostAllowed('feedback-gate.alvatar.workers.dev', ['feedback.impactmesh.xyz']), false);
+  assert.equal(isHostAllowed('feedback.impactmesh.xyz', []), true);
 });
 
 test('matchesOriginPattern supports exact and wildcard origins', () => {
@@ -192,7 +207,7 @@ test('handleFeedbackRequest rate limits and forwards upstream', async () => {
 
 test('handleFeedbackRequest accepts wildcard impactmesh subdomains', async () => {
   const response = await handleFeedbackRequest(
-    new Request('https://worker.example/feedback', {
+    new Request('https://feedback.impactmesh.xyz/feedback', {
       method: 'POST',
       headers: {
         Origin: 'https://campaign.impactmesh.xyz',
@@ -201,6 +216,7 @@ test('handleFeedbackRequest accepts wildcard impactmesh subdomains', async () =>
       body: JSON.stringify({ payload: { message: 'Hello' }, verification: { honeypot: '' } }),
     }),
     {
+      ALLOWED_HOSTS: 'feedback.impactmesh.xyz',
       ALLOWED_ORIGINS: 'https://*.impactmesh.xyz',
       APPS_SCRIPT_URL: 'https://script.google.com/macros/s/demo/exec',
       APPS_SCRIPT_SECRET: 'apps-secret',
@@ -217,6 +233,36 @@ test('handleFeedbackRequest accepts wildcard impactmesh subdomains', async () =>
 
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('Access-Control-Allow-Origin'), 'https://campaign.impactmesh.xyz');
+});
+
+test('handleFeedbackRequest rejects requests on disallowed hosts', async () => {
+  const response = await handleFeedbackRequest(
+    new Request('https://feedback-gate.alvatar.workers.dev/feedback', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://campaign.impactmesh.xyz',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ payload: { message: 'Hello' }, verification: { honeypot: '' } }),
+    }),
+    {
+      ALLOWED_HOSTS: 'feedback.impactmesh.xyz',
+      ALLOWED_ORIGINS: 'https://*.impactmesh.xyz',
+      APPS_SCRIPT_URL: 'https://script.google.com/macros/s/demo/exec',
+      APPS_SCRIPT_SECRET: 'apps-secret',
+    },
+    {
+      rateLimiter: new InMemoryRateLimiter(),
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ ok: true, stored: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    },
+  );
+
+  assert.equal(response.status, 404);
+  assert.deepEqual(await response.json(), { ok: false, error: 'Not found.' });
 });
 
 test('handleFeedbackRequest rejects invalid origins and honeypot spam', async () => {
