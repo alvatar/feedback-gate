@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>feedback-gate demo</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        line-height: 1.4;
+      }
+
+      body {
+        margin: 0;
+        background: #f3f4f6;
+        color: #111827;
+      }
+
+      .shell {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 48px 24px 120px;
+      }
+
+      .hero {
+        display: grid;
+        gap: 16px;
+        margin-bottom: 32px;
+      }
+
+      .hero h1 {
+        margin: 0;
+        font-size: clamp(2rem, 4vw, 3.5rem);
+        line-height: 1.05;
+      }
+
+      .hero p {
+        margin: 0;
+        max-width: 62ch;
+        color: #4b5563;
+      }
+
+      .controls {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+      }
+
+      .button {
+        border: 0;
+        border-radius: 999px;
+        background: #111827;
+        color: #fff;
+        padding: 12px 18px;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .button.secondary {
+        background: #fff;
+        color: #111827;
+        border: 1px solid #d1d5db;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 24px;
+      }
+
+      .card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 20px;
+        padding: 20px;
+        box-shadow: 0 8px 30px rgba(15, 23, 42, 0.06);
+      }
+
+      .card h2 {
+        margin: 0 0 12px;
+        font-size: 1.05rem;
+      }
+
+      .card p {
+        margin: 0 0 12px;
+        color: #4b5563;
+      }
+
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: #0f172a;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <h1>feedback-gate demo</h1>
+        <p>
+          This page uses the built widget against a mocked endpoint. Submit the form and the captured request
+          payload will appear below.
+        </p>
+        <div class="controls">
+          <button id="feedback-button" class="button" type="button">Open feedback modal</button>
+        </div>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <h2>What this demo exercises</h2>
+          <p>Existing trigger attachment, auth hook, custom fields, request query params, and payload transport.</p>
+          <pre id="demo-state">Waiting for submission…</pre>
+        </article>
+
+        <article class="card">
+          <h2>Mock endpoint response</h2>
+          <pre id="demo-response">No request yet.</pre>
+        </article>
+      </section>
+    </main>
+
+    <script type="module">
+      import { FeedbackGate } from '../dist/index.js';
+
+      const state = document.querySelector('#demo-state');
+      const responsePanel = document.querySelector('#demo-response');
+
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        const url = String(input);
+        if (!url.includes('/demo-feedback')) {
+          return originalFetch(input, init);
+        }
+
+        const payload = JSON.parse(String(init?.body || '{}'));
+        state.textContent = JSON.stringify(
+          {
+            url,
+            method: init?.method,
+            headers: init?.headers,
+            payload,
+          },
+          null,
+          2,
+        );
+
+        const mock = {
+          ok: true,
+          id: 'demo_submission_001',
+          receivedAt: new Date().toISOString(),
+        };
+        responsePanel.textContent = JSON.stringify(mock, null, 2);
+
+        return new Response(JSON.stringify(mock), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      };
+
+      new FeedbackGate({
+        endpoint: '/demo-feedback',
+        target: '#feedback-button',
+        request: {
+          query: () => ({
+            secret: 'demo-secret',
+            origin: window.location.origin,
+          }),
+          headers: {
+            'X-Demo': 'feedback-gate',
+          },
+        },
+        auth: {
+          required: true,
+          getUser: async () => ({
+            id: 'demo-user-1',
+            email: 'demo@example.com',
+            name: 'Demo User',
+            provider: 'demo',
+          }),
+          getHeaders: async () => ({
+            Authorization: 'Bearer demo-token',
+          }),
+        },
+        strings: {
+          title: 'Product feedback',
+          description: 'Send a short report. The request is mocked locally on this page.',
+        },
+        message: {
+          placeholder: 'I clicked X and expected Y.',
+        },
+        fields: [
+          {
+            name: 'type',
+            type: 'select',
+            label: 'Type',
+            required: true,
+            placeholder: 'Choose one',
+            options: ['bug', 'idea', 'question'],
+          },
+          {
+            name: 'email',
+            type: 'email',
+            label: 'Reply email',
+            placeholder: 'you@example.com',
+          },
+          {
+            name: 'context',
+            type: 'text',
+            label: 'Context',
+            initialValue: 'demo-page',
+          },
+          {
+            name: 'rating',
+            type: 'custom',
+            label: 'Severity',
+            render: ({ id }) => {
+              const select = document.createElement('select');
+              select.id = id;
+              select.innerHTML = [
+                '<option value="low">low</option>',
+                '<option value="medium" selected>medium</option>',
+                '<option value="high">high</option>',
+              ].join('');
+              select.className = 'feedback-gate-input';
+              return select;
+            },
+            getValue: ({ id }) => document.getElementById(id)?.value ?? '',
+          },
+        ],
+        context: {
+          site: 'demo.local',
+          page: '/demo',
+          meta: { source: 'demo-page' },
+          getMeta: () => ({ viewport: `${window.innerWidth}x${window.innerHeight}` }),
+        },
+        onSuccess: ({ payload }) => {
+          state.textContent = JSON.stringify(
+            {
+              lastSubmittedPayload: payload,
+            },
+            null,
+            2,
+          );
+        },
+      });
+    </script>
+  </body>
+</html>

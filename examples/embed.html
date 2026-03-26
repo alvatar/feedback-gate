@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>feedback-gate example</title>
+  </head>
+  <body>
+    <button id="feedback-button" type="button">Leave feedback</button>
+
+    <script type="module">
+      import { FeedbackGate } from '../dist/index.js';
+
+      new FeedbackGate({
+        endpoint: 'https://script.google.com/macros/s/REPLACE_ME/exec',
+        target: '#feedback-button',
+        request: {
+          query: () => ({
+            secret: 'replace-me',
+            origin: window.location.origin,
+          }),
+        },
+        strings: {
+          title: 'Product feedback',
+          description: 'Short, specific feedback is best.',
+        },
+        fields: [
+          {
+            name: 'type',
+            type: 'select',
+            label: 'Type',
+            required: true,
+            placeholder: 'Choose one',
+            options: ['bug', 'idea', 'question'],
+          },
+          {
+            name: 'email',
+            type: 'email',
+            label: 'Reply email',
+            placeholder: 'you@example.com',
+          },
+        ],
+      });
+    </script>
+  </body>
+</html>
