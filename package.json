@@ -11,7 +11,10 @@
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test tests/*.test.mjs",
-    "demo": "node examples/dev-server.mjs"
+    "demo": "node examples/dev-server.mjs",
+    "deploy:apps-script": "./scripts/deploy-apps-script.sh",
+    "deploy:worker": "./scripts/deploy-worker.sh",
+    "deploy": "./scripts/deploy-all.sh"
   },
   "devDependencies": {
     "typescript": "^5.9.2"

@@ -1,0 +1,106 @@
+name: deploy-feedback-gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - "cloudflare/**"
+      - "examples/google-apps-script/**"
+      - "scripts/**"
+      - "src/**"
+      - "package.json"
+      - "tsconfig.json"
+      - ".github/workflows/deploy-feedback-gate.yml"
+
+concurrency:
+  group: deploy-feedback-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GOOGLE_APPS_SCRIPT_ID: ${{ vars.GOOGLE_APPS_SCRIPT_ID }}
+      GOOGLE_APPS_SCRIPT_DEPLOYMENT_ID: ${{ vars.GOOGLE_APPS_SCRIPT_DEPLOYMENT_ID }}
+      GOOGLE_SHEET_NAME: ${{ vars.GOOGLE_SHEET_NAME }}
+      GOOGLE_NOTIFY_EMAIL: ${{ vars.GOOGLE_NOTIFY_EMAIL }}
+      ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+      RATE_LIMIT_MAX: ${{ vars.RATE_LIMIT_MAX }}
+      RATE_LIMIT_WINDOW_SEC: ${{ vars.RATE_LIMIT_WINDOW_SEC }}
+      CLOUDFLARE_WORKER_NAME: ${{ vars.CLOUDFLARE_WORKER_NAME }}
+      BARLOVENTO_REPO: ${{ vars.BARLOVENTO_REPO != '' && vars.BARLOVENTO_REPO || 'alvatar/barlovento' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required config
+        run: |
+          test -n "${{ secrets.CLOUDFLARE_API_TOKEN }}" || { echo "Missing secret: CLOUDFLARE_API_TOKEN" >&2; exit 1; }
+          test -n "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" || { echo "Missing secret: CLOUDFLARE_ACCOUNT_ID" >&2; exit 1; }
+          test -n "${{ secrets.CLASP_TOKEN }}" || { echo "Missing secret: CLASP_TOKEN" >&2; exit 1; }
+          test -n "${{ secrets.APPS_SCRIPT_SECRET }}" || { echo "Missing secret: APPS_SCRIPT_SECRET" >&2; exit 1; }
+          test -n "$GOOGLE_APPS_SCRIPT_ID" || { echo "Missing variable: GOOGLE_APPS_SCRIPT_ID" >&2; exit 1; }
+          test -n "$GOOGLE_SHEET_NAME" || { echo "Missing variable: GOOGLE_SHEET_NAME" >&2; exit 1; }
+          test -n "$GOOGLE_NOTIFY_EMAIL" || { echo "Missing variable: GOOGLE_NOTIFY_EMAIL" >&2; exit 1; }
+          test -n "$ALLOWED_ORIGINS" || { echo "Missing variable: ALLOWED_ORIGINS" >&2; exit 1; }
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build package
+        run: npm run build
+
+      - name: Sanity check deploy scripts
+        run: |
+          bash -n scripts/deploy-apps-script.sh
+          bash -n scripts/deploy-worker.sh
+          bash -n scripts/deploy-all.sh
+          DRY_RUN=true \
+          GOOGLE_APPS_SCRIPT_ID=dummy-script-id \
+          GOOGLE_SHEET_NAME=Feedback \
+          GOOGLE_NOTIFY_EMAIL=test@example.com \
+          APPS_SCRIPT_SECRET=dummy-secret \
+          CLASP_TOKEN='{}' \
+          scripts/deploy-apps-script.sh >/tmp/deploy-apps-script-dry-run.log
+          DRY_RUN=true \
+          CLOUDFLARE_API_TOKEN=dummy-token \
+          CLOUDFLARE_ACCOUNT_ID=dummy-account \
+          APPS_SCRIPT_URL=https://script.google.com/macros/s/AKFYCB_FAKE/exec \
+          APPS_SCRIPT_SECRET=dummy-secret \
+          ALLOWED_ORIGINS=https://example.com \
+          scripts/deploy-worker.sh >/tmp/deploy-worker-dry-run.log
+
+      - name: Deploy Apps Script
+        id: apps_script
+        env:
+          APPS_SCRIPT_SECRET: ${{ secrets.APPS_SCRIPT_SECRET }}
+          CLASP_TOKEN: ${{ secrets.CLASP_TOKEN }}
+        run: scripts/deploy-apps-script.sh
+
+      - name: Deploy Cloudflare Worker
+        id: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          APPS_SCRIPT_SECRET: ${{ secrets.APPS_SCRIPT_SECRET }}
+          APPS_SCRIPT_URL: ${{ steps.apps_script.outputs.apps_script_url }}
+        run: scripts/deploy-worker.sh
+
+      - name: Sync endpoint into barlovento repo variable
+        if: ${{ secrets.BARLOVENTO_VARIABLES_TOKEN != '' }}
+        env:
+          GITHUB_VARIABLES_TOKEN: ${{ secrets.BARLOVENTO_VARIABLES_TOKEN }}
+          TARGET_REPO: ${{ env.BARLOVENTO_REPO }}
+          VARIABLE_NAME: FEEDBACK_GATE_ENDPOINT
+          VARIABLE_VALUE: ${{ steps.worker.outputs.worker_endpoint }}
+        run: node scripts/sync-github-variable.mjs
