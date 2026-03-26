@@ -73,6 +73,7 @@ interface MountedElements {
   message: HTMLTextAreaElement;
   submitButton: HTMLButtonElement;
   cancelButton: HTMLButtonElement;
+  dismissButton: HTMLButtonElement;
   shareEmailField: HTMLLabelElement;
   shareEmailInput: HTMLInputElement;
   customFields: Map<string, FeedbackCustomFieldContext>;
@@ -219,8 +220,10 @@ export class FeedbackGate {
     const overlay = document.createElement('div');
     const panel = document.createElement('div');
     const header = document.createElement('div');
+    const headerCopy = document.createElement('div');
     const title = document.createElement('h2');
     const description = document.createElement('p');
+    const dismissButton = document.createElement('button');
     const authSection = document.createElement('div');
     const authTitle = document.createElement('h3');
     const authDescription = document.createElement('p');
@@ -262,6 +265,7 @@ export class FeedbackGate {
     applyTheme(panel, this.resolveTheme());
 
     header.className = joinClasses('feedback-gate-header', this.config.classes?.header);
+    headerCopy.className = 'feedback-gate-header-copy';
 
     title.id = titleId;
     title.textContent = strings.title;
@@ -269,7 +273,13 @@ export class FeedbackGate {
     description.id = descriptionId;
     description.textContent = strings.description;
 
+    dismissButton.type = 'button';
+    dismissButton.className = 'feedback-gate-dismiss';
+    dismissButton.setAttribute('aria-label', 'Close feedback dialog');
+    dismissButton.textContent = '×';
+
     authSection.className = 'feedback-gate-auth';
+    authSection.setAttribute('role', 'region');
     authTitle.className = 'feedback-gate-auth-title';
     authTitle.textContent = strings.authTitle;
     authDescription.textContent = strings.authDescription;
@@ -291,6 +301,7 @@ export class FeedbackGate {
     authIdentity.hidden = true;
 
     messageField.className = joinClasses('feedback-gate-field', this.config.classes?.field);
+    messageField.dataset.size = 'full';
     messageLabel.htmlFor = messageId;
     messageLabel.textContent = this.config.message?.label ?? 'Message';
 
@@ -308,6 +319,7 @@ export class FeedbackGate {
     }
 
     shareEmailField.className = 'feedback-gate-checkbox';
+    shareEmailField.dataset.size = 'full';
     shareEmailField.hidden = true;
     shareEmailInput.type = 'checkbox';
     shareEmailInput.name = 'share-email';
@@ -328,7 +340,8 @@ export class FeedbackGate {
     submitButton.className = joinClasses('feedback-gate-button-primary', this.config.classes?.submitButton);
     submitButton.textContent = strings.submitLabel;
 
-    header.append(title, description);
+    headerCopy.append(title, description);
+    header.append(headerCopy, dismissButton);
     messageField.append(messageLabel, messageInput);
     actions.append(cancelButton, submitButton);
     form.append(authIdentity, messageField, fieldsContainer, shareEmailField, status, actions);
@@ -341,6 +354,7 @@ export class FeedbackGate {
     panel.addEventListener('keydown', this.handlePanelKeyDown);
     form.addEventListener('submit', this.handleSubmit);
     cancelButton.addEventListener('click', this.handleCancelClick);
+    dismissButton.addEventListener('click', this.handleCancelClick);
 
     trigger.setAttribute('aria-haspopup', 'dialog');
     trigger.setAttribute('aria-controls', overlayId);
@@ -358,6 +372,7 @@ export class FeedbackGate {
       message: messageInput,
       submitButton,
       cancelButton,
+      dismissButton,
       shareEmailField,
       shareEmailInput,
       customFields,
@@ -387,6 +402,7 @@ export class FeedbackGate {
 
     wrapper.className = joinClasses('feedback-gate-field', this.config.classes?.field);
     wrapper.dataset.fieldName = field.name;
+    wrapper.dataset.size = field.type === 'textarea' ? 'full' : 'half';
 
     label.textContent = field.label;
     label.htmlFor = id;
@@ -535,6 +551,7 @@ export class FeedbackGate {
     this.isSubmitting = submitting;
     this.mountedElements.submitButton.disabled = submitting || this.authPhase !== 'idle';
     this.mountedElements.cancelButton.disabled = submitting;
+    this.mountedElements.dismissButton.disabled = submitting;
     this.mountedElements.message.disabled = submitting;
     this.mountedElements.shareEmailInput.disabled = submitting;
     this.mountedElements.submitButton.textContent = submitting
@@ -951,29 +968,48 @@ function ensureStyles(): void {
     }
 
     .feedback-gate-panel {
-      width: min(100%, 560px);
-      max-height: calc(100vh - 48px);
+      width: min(100%, 720px);
+      max-height: min(880px, calc(100vh - 48px));
       overflow: auto;
       background: var(--feedback-gate-surface-color);
       color: var(--feedback-gate-text-color);
-      border-radius: var(--feedback-gate-border-radius);
+      border-radius: calc(var(--feedback-gate-border-radius) + 4px);
       box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
-      padding: 24px;
+      padding: 32px;
       border: 1px solid var(--feedback-gate-border-color);
+      display: grid;
+      gap: 24px;
     }
 
-    .feedback-gate-header,
-    .feedback-gate-auth,
-    .feedback-gate-form,
-    .feedback-gate-fields {
-      display: grid;
+    .feedback-gate-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
       gap: 16px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+    }
+
+    .feedback-gate-auth[hidden],
+    .feedback-gate-form[hidden],
+    .feedback-gate-identity[hidden],
+    .feedback-gate-status[hidden],
+    .feedback-gate-checkbox[hidden] {
+      display: none !important;
+    }
+
+    .feedback-gate-header-copy {
+      display: grid;
+      gap: 10px;
+      max-width: 56ch;
     }
 
     .feedback-gate-header h2,
     .feedback-gate-auth h3 {
       margin: 0;
-      font-size: 1.25rem;
+      font-size: 1.75rem;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
     }
 
     .feedback-gate-header p,
@@ -985,19 +1021,111 @@ function ensureStyles(): void {
       color: var(--feedback-gate-muted-text-color);
     }
 
+    .feedback-gate-dismiss {
+      flex: 0 0 auto;
+      inline-size: 40px;
+      block-size: 40px;
+      border: 1px solid var(--feedback-gate-border-color);
+      border-radius: 999px;
+      background: var(--feedback-gate-background-color);
+      color: var(--feedback-gate-text-color);
+      font: inherit;
+      font-size: 1.5rem;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .feedback-gate-auth {
+      display: grid;
+      gap: 16px;
+      padding: 20px;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.02), rgba(15, 23, 42, 0.04));
+    }
+
+    .feedback-gate-auth-title {
+      font-size: 1.25rem;
+    }
+
     .feedback-gate-provider-buttons {
       display: grid;
       gap: 12px;
     }
 
+    .feedback-gate-form {
+      display: grid;
+      gap: 24px;
+    }
+
+    .feedback-gate-fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 20px;
+    }
+
+    .feedback-gate-field {
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .feedback-gate-field[data-size="full"] {
+      grid-column: 1 / -1;
+    }
+
+    .feedback-gate-field label {
+      font-size: 0.95rem;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+
+    .feedback-gate-identity {
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: rgba(15, 23, 42, 0.04);
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      font-size: 0.95rem;
+    }
+
+    .feedback-gate-input {
+      width: 100%;
+      min-height: 50px;
+      border: 1px solid var(--feedback-gate-border-color);
+      border-radius: 14px;
+      padding: 13px 15px;
+      font: inherit;
+      color: inherit;
+      background: var(--feedback-gate-background-color);
+      box-sizing: border-box;
+      transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+    }
+
+    textarea.feedback-gate-input {
+      min-height: 168px;
+      resize: vertical;
+    }
+
+    .feedback-gate-input:focus,
+    .feedback-gate-button-provider:focus,
+    .feedback-gate-button-primary:focus,
+    .feedback-gate-button-secondary:focus,
+    .feedback-gate-dismiss:focus {
+      outline: 2px solid var(--feedback-gate-accent-color);
+      outline-offset: 2px;
+      border-color: var(--feedback-gate-accent-color);
+    }
+
     .feedback-gate-button-provider,
     .feedback-gate-button-primary,
     .feedback-gate-button-secondary {
-      border-radius: 999px;
-      padding: 10px 16px;
+      min-height: 48px;
+      border-radius: 14px;
+      padding: 12px 16px;
       font: inherit;
       font-weight: 600;
       cursor: pointer;
+      transition: transform 120ms ease, background-color 120ms ease, border-color 120ms ease;
     }
 
     .feedback-gate-button-provider {
@@ -1007,55 +1135,50 @@ function ensureStyles(): void {
       text-align: left;
     }
 
-    .feedback-gate-field {
-      display: grid;
-      gap: 8px;
+    .feedback-gate-button-provider:hover,
+    .feedback-gate-button-secondary:hover,
+    .feedback-gate-dismiss:hover {
+      background: rgba(15, 23, 42, 0.03);
     }
 
-    .feedback-gate-field label {
-      font-size: 0.95rem;
-      font-weight: 600;
-    }
-
-    .feedback-gate-input {
-      width: 100%;
-      border: 1px solid var(--feedback-gate-border-color);
-      border-radius: 12px;
-      padding: 12px 14px;
-      font: inherit;
-      color: inherit;
-      background: var(--feedback-gate-background-color);
-      box-sizing: border-box;
-    }
-
-    .feedback-gate-input:focus {
-      outline: 2px solid var(--feedback-gate-accent-color);
-      outline-offset: 1px;
-      border-color: var(--feedback-gate-accent-color);
+    .feedback-gate-button-primary:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.03);
     }
 
     .feedback-gate-checkbox {
       display: flex;
-      align-items: center;
-      gap: 10px;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: rgba(15, 23, 42, 0.03);
+      border: 1px solid rgba(15, 23, 42, 0.08);
       font-size: 0.95rem;
       color: var(--feedback-gate-text-color);
+      line-height: 1.4;
     }
 
     .feedback-gate-checkbox input {
-      margin: 0;
+      margin: 2px 0 0;
+      inline-size: 16px;
+      block-size: 16px;
+      flex: 0 0 auto;
     }
 
     .feedback-gate-actions {
       display: flex;
       justify-content: flex-end;
       gap: 12px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(15, 23, 42, 0.08);
     }
 
     .feedback-gate-button-primary {
       border: 0;
       background: var(--feedback-gate-accent-color);
       color: #ffffff;
+      padding-inline: 20px;
     }
 
     .feedback-gate-button-secondary {
@@ -1067,13 +1190,52 @@ function ensureStyles(): void {
     .feedback-gate-button-provider[disabled],
     .feedback-gate-button-primary[disabled],
     .feedback-gate-button-secondary[disabled],
+    .feedback-gate-dismiss[disabled],
     .feedback-gate-input[disabled] {
       opacity: 0.6;
       cursor: not-allowed;
+      transform: none;
     }
 
     .feedback-gate-status[data-variant="error"] {
       color: #b91c1c;
+    }
+
+    @media (max-width: 720px) {
+      .feedback-gate-overlay {
+        padding: 12px;
+      }
+
+      .feedback-gate-panel {
+        width: 100%;
+        max-height: calc(100vh - 24px);
+        padding: 20px;
+        gap: 20px;
+      }
+
+      .feedback-gate-header {
+        padding-bottom: 16px;
+      }
+
+      .feedback-gate-header h2,
+      .feedback-gate-auth h3 {
+        font-size: 1.4rem;
+      }
+
+      .feedback-gate-fields {
+        grid-template-columns: 1fr;
+        gap: 16px;
+      }
+
+      .feedback-gate-actions {
+        flex-direction: column-reverse;
+      }
+
+      .feedback-gate-button-primary,
+      .feedback-gate-button-secondary,
+      .feedback-gate-button-provider {
+        width: 100%;
+      }
     }
   `;
 
