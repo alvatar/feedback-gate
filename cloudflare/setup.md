@@ -15,5 +15,5 @@
 
 4. On the site:
    - set widget `endpoint` to the Worker URL
-   - no login or captcha required
+   - keep the form frictionless for the user
    - keep Apps Script private behind the Worker only

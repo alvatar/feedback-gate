@@ -51,33 +51,6 @@ export type FeedbackField =
   | FeedbackSelectField
   | FeedbackCustomField;
 
-export interface FeedbackUser {
-  id: string;
-  email?: string;
-  name?: string;
-  provider?: string;
-  [key: string]: unknown;
-}
-
-export interface FeedbackAuthProvider {
-  id: string;
-  label: string;
-}
-
-export interface FeedbackAuthConfig {
-  required?: boolean;
-  providers?: FeedbackAuthProvider[];
-  providerOrder?: 'auto' | string[];
-  getUser?: () => Promise<FeedbackUser | null> | FeedbackUser | null;
-  getHeaders?: () => Promise<Record<string, string>> | Record<string, string>;
-  login?: (providerId: string) => Promise<FeedbackUser | null | void> | FeedbackUser | null | void;
-}
-
-export interface FeedbackPrivacyConfig {
-  shareEmailByDefault?: boolean;
-  allowUserToggle?: boolean;
-}
-
 export interface FeedbackMessageConfig {
   label?: string;
   placeholder?: string;
@@ -150,12 +123,6 @@ export interface FeedbackStrings {
   cancelLabel?: string;
   sendingLabel?: string;
   genericError?: string;
-  loginRequired?: string;
-  authTitle?: string;
-  authDescription?: string;
-  checkingAuthLabel?: string;
-  signedInPrefix?: string;
-  shareEmailLabel?: string;
 }
 
 export interface FeedbackResult {
@@ -169,8 +136,6 @@ export interface FeedbackGateConfig {
   trigger?: FeedbackTriggerConfig;
   fields?: FeedbackField[];
   message?: FeedbackMessageConfig;
-  auth?: FeedbackAuthConfig;
-  privacy?: FeedbackPrivacyConfig;
   protection?: FeedbackProtectionConfig;
   request?: FeedbackRequestConfig;
   context?: FeedbackContextConfig;
@@ -187,7 +152,6 @@ export interface FeedbackSubmissionPayload {
   page: string;
   message: string;
   fields: Record<string, unknown>;
-  user: FeedbackUser | null;
   meta: Record<string, unknown>;
 }
 

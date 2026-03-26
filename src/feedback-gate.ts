@@ -1,9 +1,7 @@
-import { getOrderedProviders } from './auth-order.js';
 import { FeedbackGateError, prepareSubmission } from './payload.js';
 import { submitFeedback } from './transport.js';
 import { TurnstileController } from './turnstile.js';
 import {
-  type FeedbackAuthProvider,
   type FeedbackClassNames,
   type FeedbackCustomField,
   type FeedbackCustomFieldContext,
@@ -13,7 +11,6 @@ import {
   type FeedbackResult,
   type FeedbackSubmissionRequestBody,
   type FeedbackTheme,
-  type FeedbackUser,
 } from './types.js';
 
 const DEFAULT_THEME: FeedbackTheme = {
@@ -49,28 +46,17 @@ const DEFAULT_STRINGS = {
   cancelLabel: 'Cancel',
   sendingLabel: 'Sending…',
   genericError: 'Unable to send feedback right now.',
-  loginRequired: 'Please sign in before submitting feedback.',
-  authTitle: 'Sign in to continue',
-  authDescription: "Your identity won't be shared. This is just to avoid spam",
-  checkingAuthLabel: 'Checking your sign-in status…',
-  signedInPrefix: 'Signed in as',
-  shareEmailLabel: 'Share my email with the site owner',
 };
 
 const STYLE_ID = 'feedback-gate-styles';
 let instanceCount = 0;
 
 type StatusVariant = 'error' | 'idle';
-type AuthPhase = 'idle' | 'checking' | 'logging-in';
 
 interface MountedElements {
   trigger: HTMLElement;
   overlay: HTMLDivElement;
   panel: HTMLDivElement;
-  authSection: HTMLDivElement;
-  authStatus: HTMLParagraphElement;
-  authButtons: HTMLDivElement;
-  authIdentity: HTMLParagraphElement;
   form: HTMLFormElement;
   turnstileContainer: HTMLDivElement;
   honeypotInput: HTMLInputElement;
@@ -79,8 +65,6 @@ interface MountedElements {
   submitButton: HTMLButtonElement;
   cancelButton: HTMLButtonElement;
   dismissButton: HTMLButtonElement;
-  shareEmailField: HTMLLabelElement;
-  shareEmailInput: HTMLInputElement;
   customFields: Map<string, FeedbackCustomFieldContext>;
 }
 
@@ -90,12 +74,9 @@ export class FeedbackGate {
   private mounted = false;
   private isOpen = false;
   private isSubmitting = false;
-  private authPhase: AuthPhase = 'idle';
-  private currentUser: FeedbackUser | null = null;
   private restoreFocusTarget: HTMLElement | null = null;
   private previousBodyOverflow = '';
   private generatedTrigger = false;
-  private emailPreferenceUserKey: string | null = null;
   private turnstile: TurnstileController | null = null;
 
   constructor(private readonly config: FeedbackGateConfig) {
@@ -117,7 +98,6 @@ export class FeedbackGate {
 
     this.mountedElements = elements;
     this.mounted = true;
-    this.renderAuthState();
   }
 
   open(): void {
@@ -134,8 +114,6 @@ export class FeedbackGate {
     this.mountedElements.overlay.hidden = false;
     this.isOpen = true;
     this.setStatus('');
-    this.setAuthStatus('');
-    void this.refreshUser();
     void this.ensureProtectionReady();
 
     queueMicrotask(() => {
@@ -233,22 +211,13 @@ export class FeedbackGate {
     const title = document.createElement('h2');
     const description = document.createElement('p');
     const dismissButton = document.createElement('button');
-    const authSection = document.createElement('div');
-    const authTitle = document.createElement('h3');
-    const authDescription = document.createElement('p');
-    const authStatus = document.createElement('p');
-    const authButtons = document.createElement('div');
     const form = document.createElement('form');
-    const authIdentity = document.createElement('p');
     const turnstileContainer = document.createElement('div');
     const honeypotInput = document.createElement('input');
     const messageField = document.createElement('div');
     const messageLabel = document.createElement('label');
     const messageInput = document.createElement('textarea');
     const fieldsContainer = document.createElement('div');
-    const shareEmailField = document.createElement('label');
-    const shareEmailInput = document.createElement('input');
-    const shareEmailText = document.createElement('span');
     const status = document.createElement('p');
     const actions = document.createElement('div');
     const cancelButton = document.createElement('button');
@@ -289,27 +258,8 @@ export class FeedbackGate {
     dismissButton.setAttribute('aria-label', 'Close feedback dialog');
     dismissButton.textContent = '×';
 
-    authSection.className = 'feedback-gate-auth';
-    authSection.setAttribute('role', 'region');
-    authTitle.className = 'feedback-gate-auth-title';
-    authTitle.textContent = strings.authTitle;
-    authDescription.textContent = strings.authDescription;
-    authStatus.className = 'feedback-gate-status';
-    authStatus.hidden = true;
-    authStatus.setAttribute('aria-live', 'polite');
-    authButtons.className = 'feedback-gate-provider-buttons';
-
-    for (const provider of getOrderedProviders(this.config.auth)) {
-      authButtons.appendChild(this.createProviderButton(provider));
-    }
-
-    authSection.append(authTitle, authDescription, authStatus, authButtons);
-
     form.className = joinClasses('feedback-gate-form', this.config.classes?.form);
     form.noValidate = true;
-
-    authIdentity.className = 'feedback-gate-identity';
-    authIdentity.hidden = true;
 
     turnstileContainer.className = 'feedback-gate-turnstile';
     turnstileContainer.hidden = !this.config.protection?.turnstile;
@@ -339,14 +289,6 @@ export class FeedbackGate {
       fieldsContainer.appendChild(fieldRoot);
     }
 
-    shareEmailField.className = 'feedback-gate-checkbox';
-    shareEmailField.dataset.size = 'full';
-    shareEmailField.hidden = true;
-    shareEmailInput.type = 'checkbox';
-    shareEmailInput.name = 'share-email';
-    shareEmailText.textContent = strings.shareEmailLabel;
-    shareEmailField.append(shareEmailInput, shareEmailText);
-
     status.className = joinClasses('feedback-gate-status', this.config.classes?.status);
     status.hidden = true;
     status.setAttribute('aria-live', 'polite');
@@ -365,8 +307,8 @@ export class FeedbackGate {
     header.append(headerCopy, dismissButton);
     messageField.append(messageLabel, messageInput);
     actions.append(cancelButton, submitButton);
-    form.append(authIdentity, turnstileContainer, honeypotInput, messageField, fieldsContainer, shareEmailField, status, actions);
-    panel.append(header, authSection, form);
+    form.append(turnstileContainer, honeypotInput, messageField, fieldsContainer, status, actions);
+    panel.append(header, form);
     overlay.append(panel);
     document.body.appendChild(overlay);
 
@@ -384,10 +326,6 @@ export class FeedbackGate {
       trigger,
       overlay,
       panel,
-      authSection,
-      authStatus,
-      authButtons,
-      authIdentity,
       form,
       turnstileContainer,
       honeypotInput,
@@ -396,22 +334,8 @@ export class FeedbackGate {
       submitButton,
       cancelButton,
       dismissButton,
-      shareEmailField,
-      shareEmailInput,
       customFields,
     };
-  }
-
-  private createProviderButton(provider: FeedbackAuthProvider): HTMLButtonElement {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'feedback-gate-button-provider';
-    button.textContent = provider.label;
-    button.dataset.providerId = provider.id;
-    button.addEventListener('click', () => {
-      void this.loginWithProvider(provider.id);
-    });
-    return button;
   }
 
   private createField(
@@ -518,8 +442,6 @@ export class FeedbackGate {
     const prepared = await prepareSubmission({
       message: this.mountedElements.message.value,
       fields: fieldValues,
-      user: this.getSubmissionUser(),
-      auth: this.config.auth,
       context: this.config.context,
       requestHeaders: this.config.request?.headers,
       userAgent: globalThis.navigator?.userAgent,
@@ -577,32 +499,6 @@ export class FeedbackGate {
     await this.turnstile.ensureWidget();
   }
 
-  private getSubmissionUser(): FeedbackUser | null {
-    if (!this.currentUser) {
-      return null;
-    }
-
-    if (!this.currentUser.email || this.shouldShareEmail()) {
-      return this.currentUser;
-    }
-
-    const { email: _email, ...user } = this.currentUser;
-    return user;
-  }
-
-  private shouldShareEmail(): boolean {
-    if (!this.currentUser?.email) {
-      return false;
-    }
-
-    const privacy = this.resolvePrivacy();
-    if (!privacy.allowUserToggle) {
-      return privacy.shareEmailByDefault;
-    }
-
-    return this.mountedElements?.shareEmailInput.checked ?? privacy.shareEmailByDefault;
-  }
-
   private setSubmitting(submitting: boolean): void {
     if (!this.mountedElements) {
       return;
@@ -610,11 +506,10 @@ export class FeedbackGate {
 
     const strings = this.resolveStrings();
     this.isSubmitting = submitting;
-    this.mountedElements.submitButton.disabled = submitting || this.authPhase !== 'idle';
+    this.mountedElements.submitButton.disabled = submitting;
     this.mountedElements.cancelButton.disabled = submitting;
     this.mountedElements.dismissButton.disabled = submitting;
     this.mountedElements.message.disabled = submitting;
-    this.mountedElements.shareEmailInput.disabled = submitting;
     this.mountedElements.submitButton.textContent = submitting
       ? strings.sendingLabel
       : strings.submitLabel;
@@ -635,82 +530,12 @@ export class FeedbackGate {
     }
   }
 
-  private setAuthPhase(phase: AuthPhase): void {
-    this.authPhase = phase;
-    this.renderAuthState();
-  }
-
-  private async refreshUser(): Promise<void> {
-    if (!this.config.auth?.getUser) {
-      this.currentUser = null;
-      this.renderAuthState();
-      return;
-    }
-
-    this.setAuthPhase('checking');
-    this.setAuthStatus(this.resolveStrings().checkingAuthLabel);
-
-    try {
-      this.currentUser = (await this.config.auth.getUser()) ?? null;
-      this.setAuthStatus('');
-    } catch (error) {
-      this.currentUser = null;
-      this.setAuthStatus(resolveErrorMessage(error, this.resolveStrings().genericError), 'error');
-      await this.config.onError?.(error);
-    } finally {
-      this.setAuthPhase('idle');
-      if (this.isOpen) {
-        queueMicrotask(() => {
-          this.focusFirstFocusable();
-        });
-      }
-    }
-  }
-
-  private async loginWithProvider(providerId: string): Promise<void> {
-    if (!this.config.auth?.login || this.authPhase !== 'idle') {
-      return;
-    }
-
-    this.setStatus('');
-    this.setAuthPhase('logging-in');
-    this.setAuthStatus('');
-
-    try {
-      const maybeUser = (await this.config.auth.login(providerId)) ?? null;
-      this.currentUser = maybeUser || ((await this.config.auth.getUser?.()) ?? null);
-
-      if (this.config.auth.required && !this.currentUser) {
-        throw new FeedbackGateError('Authentication is required before submitting feedback.');
-      }
-
-      this.setAuthStatus('');
-    } catch (error) {
-      const strings = this.resolveStrings();
-      this.currentUser = null;
-      const message =
-        error instanceof FeedbackGateError && error.message === 'Authentication is required before submitting feedback.'
-          ? strings.loginRequired
-          : resolveErrorMessage(error, strings.genericError);
-      this.setAuthStatus(message, 'error');
-      await this.config.onError?.(error);
-    } finally {
-      this.setAuthPhase('idle');
-      if (this.isOpen) {
-        queueMicrotask(() => {
-          this.focusFirstFocusable();
-        });
-      }
-    }
-  }
-
   private resetForm(): void {
     if (!this.mountedElements) {
       return;
     }
 
     this.mountedElements.form.reset();
-    this.syncEmailPreference(true);
   }
 
   private setStatus(message: string, variant: StatusVariant = 'idle'): void {
@@ -722,74 +547,6 @@ export class FeedbackGate {
     status.hidden = message.length === 0;
     status.textContent = message;
     status.dataset.variant = variant;
-  }
-
-  private setAuthStatus(message: string, variant: StatusVariant = 'idle'): void {
-    if (!this.mountedElements) {
-      return;
-    }
-
-    const { authStatus } = this.mountedElements;
-    authStatus.hidden = message.length === 0;
-    authStatus.textContent = message;
-    authStatus.dataset.variant = variant;
-  }
-
-  private renderAuthState(): void {
-    if (!this.mountedElements) {
-      return;
-    }
-
-    const strings = this.resolveStrings();
-    const requiresAuth = this.config.auth?.required ?? false;
-    const showAuthSection = this.authPhase !== 'idle' || (requiresAuth && !this.currentUser);
-    const hasLoginProviders = (this.config.auth?.providers?.length ?? 0) > 0;
-    const canStartLogin = !!this.config.auth?.login;
-
-    this.mountedElements.authSection.hidden = !showAuthSection;
-    this.mountedElements.form.hidden = showAuthSection;
-
-    this.mountedElements.authIdentity.hidden = !this.currentUser;
-    this.mountedElements.authIdentity.textContent = this.currentUser
-      ? `${strings.signedInPrefix} ${formatUserLabel(this.currentUser)}`
-      : '';
-
-    if (showAuthSection && this.authPhase === 'idle' && requiresAuth && !this.currentUser && !hasVisibleAuthAction(this.config)) {
-      this.setAuthStatus(strings.loginRequired, 'error');
-    }
-
-    const providerButtons = this.mountedElements.authButtons.querySelectorAll<HTMLButtonElement>('button');
-    for (const button of providerButtons) {
-      button.disabled = this.authPhase !== 'idle' || !canStartLogin;
-    }
-
-    this.mountedElements.authButtons.hidden = !hasLoginProviders;
-    this.syncEmailPreference();
-    this.setSubmitting(this.isSubmitting);
-  }
-
-  private syncEmailPreference(force = false): void {
-    if (!this.mountedElements) {
-      return;
-    }
-
-    const privacy = this.resolvePrivacy();
-    const userKey = this.currentUser ? `${this.currentUser.provider ?? 'user'}:${this.currentUser.id}` : null;
-    const canShareEmail = !!this.currentUser?.email;
-    const showToggle = canShareEmail && privacy.allowUserToggle;
-
-    this.mountedElements.shareEmailField.hidden = !showToggle;
-
-    if (!canShareEmail) {
-      this.emailPreferenceUserKey = userKey;
-      this.mountedElements.shareEmailInput.checked = false;
-      return;
-    }
-
-    if (force || this.emailPreferenceUserKey !== userKey) {
-      this.mountedElements.shareEmailInput.checked = privacy.shareEmailByDefault;
-      this.emailPreferenceUserKey = userKey;
-    }
   }
 
   private focusFirstFocusable(): void {
@@ -805,14 +562,6 @@ export class FeedbackGate {
     return {
       ...DEFAULT_THEME,
       ...this.config.theme,
-    };
-  }
-
-  private resolvePrivacy() {
-    return {
-      shareEmailByDefault: true,
-      allowUserToggle: true,
-      ...this.config.privacy,
     };
   }
 
@@ -873,7 +622,7 @@ export class FeedbackGate {
 
   private readonly handleSubmit = async (event: Event): Promise<void> => {
     event.preventDefault();
-    if (this.isSubmitting || this.authPhase !== 'idle') {
+    if (this.isSubmitting) {
       return;
     }
 
@@ -889,9 +638,7 @@ export class FeedbackGate {
     } catch (error) {
       const message =
         error instanceof FeedbackGateError
-          ? error.message === 'Authentication is required before submitting feedback.'
-            ? strings.loginRequired
-            : error.message
+          ? error.message
           : resolveErrorMessage(error, strings.genericError);
 
       this.setStatus(message, 'error');
@@ -1052,11 +799,7 @@ function ensureStyles(): void {
     }
 
     .feedback-gate-overlay[hidden],
-    .feedback-gate-auth[hidden],
-    .feedback-gate-form[hidden],
-    .feedback-gate-identity[hidden],
     .feedback-gate-status[hidden],
-    .feedback-gate-checkbox[hidden],
     .feedback-gate-turnstile[hidden] {
       display: none !important;
     }
@@ -1067,8 +810,7 @@ function ensureStyles(): void {
       max-width: 56ch;
     }
 
-    .feedback-gate-header h2,
-    .feedback-gate-auth h3 {
+    .feedback-gate-header h2 {
       margin: 0;
       font-size: 1.75rem;
       line-height: 1.15;
@@ -1076,10 +818,8 @@ function ensureStyles(): void {
     }
 
     .feedback-gate-header p,
-    .feedback-gate-auth p,
     .feedback-gate-description,
-    .feedback-gate-status,
-    .feedback-gate-identity {
+    .feedback-gate-status {
       margin: 0;
       color: var(--feedback-gate-muted-text-color);
     }
@@ -1096,24 +836,6 @@ function ensureStyles(): void {
       font-size: 1.5rem;
       line-height: 1;
       cursor: pointer;
-    }
-
-    .feedback-gate-auth {
-      display: grid;
-      gap: 16px;
-      padding: 20px;
-      border: 1px solid rgba(15, 23, 42, 0.08);
-      border-radius: 20px;
-      background: linear-gradient(180deg, rgba(15, 23, 42, 0.02), rgba(15, 23, 42, 0.04));
-    }
-
-    .feedback-gate-auth-title {
-      font-size: 1.25rem;
-    }
-
-    .feedback-gate-provider-buttons {
-      display: grid;
-      gap: 12px;
     }
 
     .feedback-gate-form {
@@ -1158,14 +880,6 @@ function ensureStyles(): void {
       line-height: 1.3;
     }
 
-    .feedback-gate-identity {
-      padding: 14px 16px;
-      border-radius: 16px;
-      background: rgba(15, 23, 42, 0.04);
-      border: 1px solid rgba(15, 23, 42, 0.08);
-      font-size: 0.95rem;
-    }
-
     .feedback-gate-input {
       width: 100%;
       min-height: 50px;
@@ -1185,7 +899,6 @@ function ensureStyles(): void {
     }
 
     .feedback-gate-input:focus,
-    .feedback-gate-button-provider:focus,
     .feedback-gate-button-primary:focus,
     .feedback-gate-button-secondary:focus,
     .feedback-gate-dismiss:focus {
@@ -1194,7 +907,6 @@ function ensureStyles(): void {
       border-color: var(--feedback-gate-accent-color);
     }
 
-    .feedback-gate-button-provider,
     .feedback-gate-button-primary,
     .feedback-gate-button-secondary {
       min-height: 48px;
@@ -1206,14 +918,6 @@ function ensureStyles(): void {
       transition: transform 120ms ease, background-color 120ms ease, border-color 120ms ease;
     }
 
-    .feedback-gate-button-provider {
-      border: 1px solid var(--feedback-gate-border-color);
-      background: var(--feedback-gate-background-color);
-      color: var(--feedback-gate-text-color);
-      text-align: left;
-    }
-
-    .feedback-gate-button-provider:hover,
     .feedback-gate-button-secondary:hover,
     .feedback-gate-dismiss:hover {
       background: rgba(15, 23, 42, 0.03);
@@ -1222,26 +926,6 @@ function ensureStyles(): void {
     .feedback-gate-button-primary:hover {
       transform: translateY(-1px);
       filter: brightness(1.03);
-    }
-
-    .feedback-gate-checkbox {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      padding: 14px 16px;
-      border-radius: 16px;
-      background: rgba(15, 23, 42, 0.03);
-      border: 1px solid rgba(15, 23, 42, 0.08);
-      font-size: 0.95rem;
-      color: var(--feedback-gate-text-color);
-      line-height: 1.4;
-    }
-
-    .feedback-gate-checkbox input {
-      margin: 2px 0 0;
-      inline-size: 16px;
-      block-size: 16px;
-      flex: 0 0 auto;
     }
 
     .feedback-gate-actions {
@@ -1265,7 +949,6 @@ function ensureStyles(): void {
       color: var(--feedback-gate-text-color);
     }
 
-    .feedback-gate-button-provider[disabled],
     .feedback-gate-button-primary[disabled],
     .feedback-gate-button-secondary[disabled],
     .feedback-gate-dismiss[disabled],
@@ -1295,8 +978,7 @@ function ensureStyles(): void {
         padding-bottom: 16px;
       }
 
-      .feedback-gate-header h2,
-      .feedback-gate-auth h3 {
+      .feedback-gate-header h2 {
         font-size: 1.4rem;
       }
 
@@ -1310,23 +992,13 @@ function ensureStyles(): void {
       }
 
       .feedback-gate-button-primary,
-      .feedback-gate-button-secondary,
-      .feedback-gate-button-provider {
+      .feedback-gate-button-secondary {
         width: 100%;
       }
     }
   `;
 
   document.head.appendChild(style);
-}
-
-function formatUserLabel(user: FeedbackUser): string {
-  const identity = user.email ?? user.name ?? user.id;
-  return user.provider ? `${identity} (${user.provider})` : identity;
-}
-
-function hasVisibleAuthAction(config: FeedbackGateConfig): boolean {
-  return !!config.auth?.login && (config.auth.providers?.length ?? 0) > 0;
 }
 
 function resolveErrorMessage(error: unknown, fallback: string): string {
