@@ -1,8 +1,6 @@
-import { type FeedbackSubmissionPayload } from './types.js';
-
 export interface SubmitFeedbackInput {
   endpoint: string;
-  payload: FeedbackSubmissionPayload;
+  body: unknown;
   headers: Record<string, string>;
   credentials?: RequestCredentials;
   query?: Record<string, string>;
@@ -19,7 +17,7 @@ export async function submitFeedback(input: SubmitFeedbackInput): Promise<Respon
   const response = await fetchImpl(buildEndpointUrl(input.endpoint, input.query), {
     method: 'POST',
     headers: input.headers,
-    body: JSON.stringify(input.payload),
+    body: JSON.stringify(input.body),
     credentials: input.credentials,
   });
 

@@ -1,20 +1,19 @@
 const SHEET_NAME = 'Feedback';
 const NOTIFY_EMAIL = 'replace-me@example.com';
-const SHARED_SECRET = 'replace-me';
-const ALLOWED_ORIGINS = ['https://example.com'];
+const SHARED_SECRET = 'replace-me-worker-secret';
 
 function doPost(event) {
   try {
     enforceSecret(event);
-    enforceOrigin(event);
 
-    const payload = JSON.parse(event.postData.contents || '{}');
+    const body = JSON.parse(event.postData.contents || '{}');
+    const payload = unwrapPayload(body);
     validatePayload(payload);
 
     appendRow(payload);
     sendNotification(payload);
 
-    return jsonResponse({ ok: true });
+    return jsonResponse({ ok: true, stored: true, notified: !!NOTIFY_EMAIL });
   } catch (error) {
     return jsonResponse({
       ok: false,
@@ -25,16 +24,17 @@ function doPost(event) {
 
 function enforceSecret(event) {
   const secret = String(event?.parameter?.secret || '');
-  if (SHARED_SECRET && secret !== SHARED_SECRET) {
+  if (!SHARED_SECRET || secret !== SHARED_SECRET) {
     throw new Error('Invalid secret.');
   }
 }
 
-function enforceOrigin(event) {
-  const origin = String(event?.parameter?.origin || '');
-  if (ALLOWED_ORIGINS.length > 0 && !ALLOWED_ORIGINS.includes(origin)) {
-    throw new Error('Origin not allowed.');
+function unwrapPayload(body) {
+  if (body && typeof body === 'object' && body.payload && typeof body.payload === 'object') {
+    return body.payload;
   }
+
+  return body;
 }
 
 function validatePayload(payload) {
@@ -44,10 +44,6 @@ function validatePayload(payload) {
 
   if (typeof payload.message !== 'string' || payload.message.trim() === '') {
     throw new Error('Message is required.');
-  }
-
-  if (payload.fields && typeof payload.fields.hp === 'string' && payload.fields.hp.trim() !== '') {
-    throw new Error('Spam rejected.');
   }
 }
 

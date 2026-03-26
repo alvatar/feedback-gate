@@ -119,6 +119,17 @@ export interface FeedbackRequestConfig {
     | (() => Promise<Record<string, string>> | Record<string, string>);
 }
 
+export interface FeedbackTurnstileConfig {
+  siteKey: string;
+  action?: string;
+  scriptUrl?: string;
+  tokenTimeoutMs?: number;
+}
+
+export interface FeedbackProtectionConfig {
+  turnstile?: FeedbackTurnstileConfig;
+}
+
 export interface FeedbackContextConfig {
   site?: string;
   page?: string;
@@ -160,6 +171,7 @@ export interface FeedbackGateConfig {
   message?: FeedbackMessageConfig;
   auth?: FeedbackAuthConfig;
   privacy?: FeedbackPrivacyConfig;
+  protection?: FeedbackProtectionConfig;
   request?: FeedbackRequestConfig;
   context?: FeedbackContextConfig;
   strings?: FeedbackStrings;
@@ -177,6 +189,16 @@ export interface FeedbackSubmissionPayload {
   fields: Record<string, unknown>;
   user: FeedbackUser | null;
   meta: Record<string, unknown>;
+}
+
+export interface FeedbackVerificationPayload {
+  turnstileToken?: string;
+  honeypot?: string;
+}
+
+export interface FeedbackSubmissionRequestBody {
+  payload: FeedbackSubmissionPayload;
+  verification?: FeedbackVerificationPayload;
 }
 
 export interface PreparedSubmission {

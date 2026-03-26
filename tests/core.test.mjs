@@ -221,14 +221,20 @@ test('submitFeedback sends JSON payload', async () => {
     query: {
       secret: 'abc',
     },
-    payload: {
-      timestamp: '2026-03-26T12:00:00.000Z',
-      site: 'example.com',
-      page: '/pricing',
-      message: 'Hello',
-      fields: { type: 'idea' },
-      user: null,
-      meta: { userAgent: 'node-test' },
+    body: {
+      payload: {
+        timestamp: '2026-03-26T12:00:00.000Z',
+        site: 'example.com',
+        page: '/pricing',
+        message: 'Hello',
+        fields: { type: 'idea' },
+        user: null,
+        meta: { userAgent: 'node-test' },
+      },
+      verification: {
+        turnstileToken: 'token-123',
+        honeypot: '',
+      },
     },
     headers: {
       'Content-Type': 'application/json',
@@ -248,13 +254,19 @@ test('submitFeedback sends JSON payload', async () => {
   assert.equal(capturedInit.method, 'POST');
   assert.equal(capturedInit.headers['Content-Type'], 'application/json');
   assert.deepEqual(JSON.parse(capturedInit.body), {
-    timestamp: '2026-03-26T12:00:00.000Z',
-    site: 'example.com',
-    page: '/pricing',
-    message: 'Hello',
-    fields: { type: 'idea' },
-    user: null,
-    meta: { userAgent: 'node-test' },
+    payload: {
+      timestamp: '2026-03-26T12:00:00.000Z',
+      site: 'example.com',
+      page: '/pricing',
+      message: 'Hello',
+      fields: { type: 'idea' },
+      user: null,
+      meta: { userAgent: 'node-test' },
+    },
+    verification: {
+      turnstileToken: 'token-123',
+      honeypot: '',
+    },
   });
 });
 
@@ -262,14 +274,16 @@ test('submitFeedback surfaces response body on failure', async () => {
   await assert.rejects(
     submitFeedback({
       endpoint: 'https://example.com/feedback',
-      payload: {
-        timestamp: '2026-03-26T12:00:00.000Z',
-        site: 'example.com',
-        page: '/pricing',
-        message: 'Hello',
-        fields: {},
-        user: null,
-        meta: {},
+      body: {
+        payload: {
+          timestamp: '2026-03-26T12:00:00.000Z',
+          site: 'example.com',
+          page: '/pricing',
+          message: 'Hello',
+          fields: {},
+          user: null,
+          meta: {},
+        },
       },
       headers: {},
       fetchImpl: async () =>

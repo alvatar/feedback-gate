@@ -59,12 +59,6 @@
         cursor: pointer;
       }
 
-      .button.secondary {
-        background: #fff;
-        color: #111827;
-        border: 1px solid #d1d5db;
-      }
-
       .grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -103,8 +97,8 @@
       <section class="hero">
         <h1>feedback-gate demo</h1>
         <p>
-          This page uses the built widget against a mocked endpoint. Submit the form and the captured request
-          payload will appear below.
+          This is the real protected flow: browser widget → Turnstile → worker endpoint → Apps Script sink.
+          The local dev server uses Cloudflare's public Turnstile test key and a local Apps Script mock.
         </p>
         <div class="controls">
           <button id="feedback-button" class="button" type="button">Open feedback modal</button>
@@ -113,13 +107,12 @@
 
       <section class="grid">
         <article class="card">
-          <h2>What this demo exercises</h2>
-          <p>Existing trigger attachment, login step, email sharing toggle, custom fields, request query params, and payload transport.</p>
+          <h2>Last payload sent by the widget</h2>
           <pre id="demo-state">Waiting for submission…</pre>
         </article>
 
         <article class="card">
-          <h2>Mock endpoint response</h2>
+          <h2>Worker / storage response</h2>
           <pre id="demo-response">No request yet.</pre>
         </article>
       </section>
@@ -130,113 +123,19 @@
 
       const state = document.querySelector('#demo-state');
       const responsePanel = document.querySelector('#demo-response');
-      let sessionUser = null;
-
-      const originalFetch = window.fetch.bind(window);
-      window.fetch = async (input, init) => {
-        const url = String(input);
-        if (!url.includes('/demo-feedback')) {
-          return originalFetch(input, init);
-        }
-
-        const payload = JSON.parse(String(init?.body || '{}'));
-        state.textContent = JSON.stringify(
-          {
-            url,
-            method: init?.method,
-            headers: init?.headers,
-            payload,
-          },
-          null,
-          2,
-        );
-
-        const mock = {
-          ok: true,
-          id: 'demo_submission_001',
-          receivedAt: new Date().toISOString(),
-        };
-        responsePanel.textContent = JSON.stringify(mock, null, 2);
-
-        return new Response(JSON.stringify(mock), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      };
 
       new FeedbackGate({
-        endpoint: '/demo-feedback',
+        endpoint: '/api/feedback',
         target: '#feedback-button',
-        request: {
-          query: () => ({
-            secret: 'demo-secret',
-            origin: window.location.origin,
-          }),
-          headers: {
-            'X-Demo': 'feedback-gate',
+        protection: {
+          turnstile: {
+            siteKey: '1x00000000000000000000AA',
+            action: 'feedback_submit',
           },
-        },
-        auth: {
-          required: true,
-          providerOrder: 'auto',
-          providers: [
-            { id: 'google', label: 'Continue with Google' },
-            { id: 'apple', label: 'Continue with Apple' },
-            { id: 'facebook', label: 'Continue with Facebook' },
-            { id: 'wechat', label: 'Continue with WeChat' },
-            { id: 'email', label: 'Continue with email' },
-          ],
-          getUser: async () => sessionUser,
-          login: async (providerId) => {
-            const identities = {
-              google: {
-                id: 'google-user-1',
-                email: 'demo@gmail.com',
-                name: 'Demo User',
-                provider: 'google',
-              },
-              apple: {
-                id: 'apple-user-1',
-                email: 'demo@privaterelay.appleid.com',
-                name: 'Apple User',
-                provider: 'apple',
-              },
-              email: {
-                id: 'email-user-1',
-                email: 'person@example.com',
-                name: 'Email User',
-                provider: 'email',
-              },
-              facebook: {
-                id: 'facebook-user-1',
-                email: 'demo@facebook.example',
-                name: 'FB User',
-                provider: 'facebook',
-              },
-              wechat: {
-                id: 'wechat-user-1',
-                email: 'wechat-user@example.cn',
-                name: 'WeChat User',
-                provider: 'wechat',
-              },
-            };
-
-            await new Promise((resolve) => setTimeout(resolve, 350));
-            sessionUser = identities[providerId] ?? null;
-            return sessionUser;
-          },
-          getHeaders: async () => ({
-            Authorization: `Bearer demo-token-${sessionUser?.provider ?? 'guest'}`,
-          }),
-        },
-        privacy: {
-          shareEmailByDefault: true,
-          allowUserToggle: true,
         },
         strings: {
           title: 'Product feedback',
-          description: 'Send a short report. The request is mocked locally on this page.',
-          authDescription: "Your identity won't be shared. This is just to avoid spam",
+          description: 'Send a short report. This local demo uses the real worker flow.',
         },
         message: {
           placeholder: 'I clicked X and expected Y.',
@@ -286,14 +185,10 @@
           meta: { source: 'demo-page' },
           getMeta: () => ({ viewport: `${window.innerWidth}x${window.innerHeight}` }),
         },
-        onSuccess: ({ payload }) => {
-          state.textContent = JSON.stringify(
-            {
-              lastSubmittedPayload: payload,
-            },
-            null,
-            2,
-          );
+        onSuccess: async ({ payload, response }) => {
+          state.textContent = JSON.stringify(payload, null, 2);
+          const responseJson = await response.clone().json();
+          responsePanel.textContent = JSON.stringify(responseJson, null, 2);
         },
       });
     </script>

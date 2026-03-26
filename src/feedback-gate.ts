@@ -1,6 +1,7 @@
 import { getOrderedProviders } from './auth-order.js';
 import { FeedbackGateError, prepareSubmission } from './payload.js';
 import { submitFeedback } from './transport.js';
+import { TurnstileController } from './turnstile.js';
 import {
   type FeedbackAuthProvider,
   type FeedbackClassNames,
@@ -10,6 +11,7 @@ import {
   type FeedbackFieldOption,
   type FeedbackGateConfig,
   type FeedbackResult,
+  type FeedbackSubmissionRequestBody,
   type FeedbackTheme,
   type FeedbackUser,
 } from './types.js';
@@ -70,6 +72,8 @@ interface MountedElements {
   authButtons: HTMLDivElement;
   authIdentity: HTMLParagraphElement;
   form: HTMLFormElement;
+  turnstileContainer: HTMLDivElement;
+  honeypotInput: HTMLInputElement;
   status: HTMLParagraphElement;
   message: HTMLTextAreaElement;
   submitButton: HTMLButtonElement;
@@ -92,6 +96,7 @@ export class FeedbackGate {
   private previousBodyOverflow = '';
   private generatedTrigger = false;
   private emailPreferenceUserKey: string | null = null;
+  private turnstile: TurnstileController | null = null;
 
   constructor(private readonly config: FeedbackGateConfig) {
     if (typeof document !== 'undefined') {
@@ -131,6 +136,7 @@ export class FeedbackGate {
     this.setStatus('');
     this.setAuthStatus('');
     void this.refreshUser();
+    void this.ensureProtectionReady();
 
     queueMicrotask(() => {
       this.focusFirstFocusable();
@@ -155,6 +161,8 @@ export class FeedbackGate {
 
     const { trigger, overlay } = this.mountedElements;
     trigger.removeEventListener('click', this.handleTriggerClick);
+    this.turnstile?.destroy();
+    this.turnstile = null;
     overlay.remove();
 
     if (this.generatedTrigger) {
@@ -232,6 +240,8 @@ export class FeedbackGate {
     const authButtons = document.createElement('div');
     const form = document.createElement('form');
     const authIdentity = document.createElement('p');
+    const turnstileContainer = document.createElement('div');
+    const honeypotInput = document.createElement('input');
     const messageField = document.createElement('div');
     const messageLabel = document.createElement('label');
     const messageInput = document.createElement('textarea');
@@ -301,6 +311,16 @@ export class FeedbackGate {
     authIdentity.className = 'feedback-gate-identity';
     authIdentity.hidden = true;
 
+    turnstileContainer.className = 'feedback-gate-turnstile';
+    turnstileContainer.hidden = !this.config.protection?.turnstile;
+
+    honeypotInput.type = 'text';
+    honeypotInput.name = 'hp';
+    honeypotInput.tabIndex = -1;
+    honeypotInput.autocomplete = 'off';
+    honeypotInput.className = 'feedback-gate-honeypot';
+    honeypotInput.setAttribute('aria-hidden', 'true');
+
     messageField.className = joinClasses('feedback-gate-field', this.config.classes?.field);
     messageField.dataset.size = 'full';
     messageLabel.htmlFor = messageId;
@@ -345,7 +365,7 @@ export class FeedbackGate {
     header.append(headerCopy, dismissButton);
     messageField.append(messageLabel, messageInput);
     actions.append(cancelButton, submitButton);
-    form.append(authIdentity, messageField, fieldsContainer, shareEmailField, status, actions);
+    form.append(authIdentity, turnstileContainer, honeypotInput, messageField, fieldsContainer, shareEmailField, status, actions);
     panel.append(header, authSection, form);
     overlay.append(panel);
     document.body.appendChild(overlay);
@@ -369,6 +389,8 @@ export class FeedbackGate {
       authButtons,
       authIdentity,
       form,
+      turnstileContainer,
+      honeypotInput,
       status,
       message: messageInput,
       submitButton,
@@ -505,7 +527,7 @@ export class FeedbackGate {
 
     const response = await submitFeedback({
       endpoint: this.config.endpoint,
-      payload: prepared.payload,
+      body: await this.buildRequestBody(prepared.payload),
       headers: prepared.headers,
       credentials: this.config.request?.credentials,
       query: await resolveRequestQuery(this.config.request?.query),
@@ -515,6 +537,44 @@ export class FeedbackGate {
       payload: prepared.payload,
       response,
     };
+  }
+
+  private async buildRequestBody(payload: FeedbackSubmissionRequestBody['payload']): Promise<FeedbackSubmissionRequestBody> {
+    return {
+      payload,
+      verification: {
+        turnstileToken: await this.getTurnstileToken(),
+        honeypot: this.mountedElements?.honeypotInput.value ?? '',
+      },
+    };
+  }
+
+  private async getTurnstileToken(): Promise<string | undefined> {
+    if (!this.config.protection?.turnstile) {
+      return undefined;
+    }
+
+    await this.ensureProtectionReady();
+    if (!this.turnstile) {
+      throw new Error('Turnstile protection is not available.');
+    }
+
+    return await this.turnstile.getToken();
+  }
+
+  private async ensureProtectionReady(): Promise<void> {
+    if (!this.config.protection?.turnstile || !this.mountedElements) {
+      return;
+    }
+
+    if (!this.turnstile) {
+      this.turnstile = new TurnstileController(
+        this.mountedElements.turnstileContainer,
+        this.config.protection.turnstile,
+      );
+    }
+
+    await this.turnstile.ensureWidget();
   }
 
   private getSubmissionUser(): FeedbackUser | null {
@@ -991,11 +1051,13 @@ function ensureStyles(): void {
       border-bottom: 1px solid rgba(15, 23, 42, 0.08);
     }
 
+    .feedback-gate-overlay[hidden],
     .feedback-gate-auth[hidden],
     .feedback-gate-form[hidden],
     .feedback-gate-identity[hidden],
     .feedback-gate-status[hidden],
-    .feedback-gate-checkbox[hidden] {
+    .feedback-gate-checkbox[hidden],
+    .feedback-gate-turnstile[hidden] {
       display: none !important;
     }
 
@@ -1057,6 +1119,21 @@ function ensureStyles(): void {
     .feedback-gate-form {
       display: grid;
       gap: 24px;
+    }
+
+    .feedback-gate-turnstile {
+      min-height: 0;
+    }
+
+    .feedback-gate-honeypot {
+      position: absolute;
+      left: -10000px;
+      top: auto;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      opacity: 0;
+      pointer-events: none;
     }
 
     .feedback-gate-fields {

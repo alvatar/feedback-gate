@@ -12,17 +12,18 @@
       import { FeedbackGate } from '../dist/index.js';
 
       new FeedbackGate({
-        endpoint: 'https://script.google.com/macros/s/REPLACE_ME/exec',
+        endpoint: 'https://feedback-gate.YOUR_SUBDOMAIN.workers.dev',
         target: '#feedback-button',
-        request: {
-          query: () => ({
-            secret: 'replace-me',
-            origin: window.location.origin,
-          }),
+        protection: {
+          turnstile: {
+            siteKey: 'REPLACE_WITH_TURNSTILE_SITE_KEY',
+            action: 'feedback_submit',
+          },
         },
         strings: {
           title: 'Product feedback',
           description: 'Short, specific feedback is best.',
+          authDescription: "Your identity won't be shared. This is just to avoid spam",
         },
         fields: [
           {
