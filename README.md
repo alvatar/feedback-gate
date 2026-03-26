@@ -37,6 +37,49 @@ Minimal embeddable TypeScript feedback modal designed to submit structured feedb
 7. Deploy the Worker.
 8. On your site, point the widget `endpoint` to the Worker URL.
 
+## Customization
+
+```js
+new FeedbackGate({
+  endpoint: 'https://your-worker.workers.dev',
+  target: '#feedback-button',
+  strings: {
+    title: 'Product feedback',
+    description: 'Short, specific feedback is best.',
+    submitLabel: 'Send',
+  },
+  message: {
+    placeholder: 'What happened?',
+    rows: 6,
+  },
+  theme: {
+    accentColor: '#7c3aed',
+    borderRadius: '20px',
+  },
+  fields: [
+    {
+      name: 'type',
+      type: 'select',
+      label: 'Type',
+      required: true,
+      placeholder: 'Choose one',
+      options: ['bug', 'idea', 'question'],
+    },
+    {
+      name: 'email',
+      type: 'email',
+      label: 'Reply email',
+      placeholder: 'you@example.com',
+    },
+  ],
+});
+```
+
+- change copy with `strings`
+- change colors/radius with `theme`
+- change fields with `fields`
+- use `classes` if you want to attach your own CSS classes
+
 ## Notes
 
 - Apps Script code lives in this repo at `examples/google-apps-script/Code.js`, then gets copied/deployed into a real Google Apps Script project.
