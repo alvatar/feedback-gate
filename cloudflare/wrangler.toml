@@ -13,7 +13,7 @@ tag = "v1"
 new_sqlite_classes = ["FeedbackRateLimiter"]
 
 [vars]
-ALLOWED_ORIGINS = "http://127.0.0.1:4173,http://localhost:4173,https://example.com"
+ALLOWED_ORIGINS = "http://127.0.0.1:4173,http://localhost:4173,https://*.impactmesh.xyz"
 RATE_LIMIT_MAX = "5"
 RATE_LIMIT_WINDOW_SEC = "300"
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/REPLACE_ME/exec"

@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 
 import {
   InMemoryRateLimiter,
+  buildCorsHeaders,
   forwardToAppsScript,
   handleFeedbackRequest,
+  matchesOriginPattern,
   normalizeEnvelope,
   normalizeOrigins,
+  resolveAllowedOrigin,
   validateEnvelope,
 } from '../cloudflare/feedback-core.mjs';
 import { createRateLimiter } from '../cloudflare/worker.mjs';
@@ -16,6 +19,32 @@ test('normalizeOrigins splits comma-separated values', () => {
     'https://a.example',
     'https://b.example',
   ]);
+});
+
+test('matchesOriginPattern supports exact and wildcard origins', () => {
+  assert.equal(matchesOriginPattern('https://app.impactmesh.xyz', 'https://*.impactmesh.xyz'), true);
+  assert.equal(matchesOriginPattern('https://foo.bar.impactmesh.xyz', 'https://*.impactmesh.xyz'), true);
+  assert.equal(matchesOriginPattern('https://impactmesh.xyz', 'https://*.impactmesh.xyz'), false);
+  assert.equal(matchesOriginPattern('http://app.impactmesh.xyz', 'https://*.impactmesh.xyz'), false);
+  assert.equal(matchesOriginPattern('https://app.impactmesh.xyz:8443', 'https://*.impactmesh.xyz'), false);
+  assert.equal(matchesOriginPattern('https://app.impactmesh.xyz:8443', 'https://*.impactmesh.xyz:8443'), true);
+  assert.equal(matchesOriginPattern('https://app.example.com', 'https://app.example.com'), true);
+});
+
+test('resolveAllowedOrigin echoes wildcard-matched request origin', () => {
+  assert.equal(
+    resolveAllowedOrigin('https://docs.impactmesh.xyz', ['https://*.impactmesh.xyz']),
+    'https://docs.impactmesh.xyz',
+  );
+
+  const headers = buildCorsHeaders(
+    new Request('https://worker.example/feedback', {
+      headers: { Origin: 'https://docs.impactmesh.xyz' },
+    }),
+    ['https://*.impactmesh.xyz'],
+  );
+
+  assert.equal(headers['Access-Control-Allow-Origin'], 'https://docs.impactmesh.xyz');
 });
 
 test('normalizeEnvelope unwraps request bodies and raw payloads', () => {
@@ -159,6 +188,35 @@ test('handleFeedbackRequest rate limits and forwards upstream', async () => {
   assert.equal(upstreamCalls[0].body.meta.verifiedBy, 'cloudflare-worker');
   assert.equal(upstreamCalls[0].body.meta.verificationMode, 'rate-limit-plus-honeypot');
   assert.match(upstreamCalls[0].body.meta.remoteIpHash, /^[a-f0-9]{64}$/);
+});
+
+test('handleFeedbackRequest accepts wildcard impactmesh subdomains', async () => {
+  const response = await handleFeedbackRequest(
+    new Request('https://worker.example/feedback', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://campaign.impactmesh.xyz',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ payload: { message: 'Hello' }, verification: { honeypot: '' } }),
+    }),
+    {
+      ALLOWED_ORIGINS: 'https://*.impactmesh.xyz',
+      APPS_SCRIPT_URL: 'https://script.google.com/macros/s/demo/exec',
+      APPS_SCRIPT_SECRET: 'apps-secret',
+    },
+    {
+      rateLimiter: new InMemoryRateLimiter(),
+      fetchImpl: async () =>
+        new Response(JSON.stringify({ ok: true, stored: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Access-Control-Allow-Origin'), 'https://campaign.impactmesh.xyz');
 });
 
 test('handleFeedbackRequest rejects invalid origins and honeypot spam', async () => {

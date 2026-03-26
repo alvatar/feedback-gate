@@ -12,7 +12,7 @@ Minimal embeddable TypeScript feedback modal designed to submit structured feedb
 
 ## Spam mitigation
 
-- origin allowlist in Worker
+- origin allowlist in Worker (`https://*.impactmesh.xyz` supported)
 - hidden honeypot field in widget, enforced in Worker
 - rate limit in Worker (`origin + IP`)
 - Apps Script protected by shared secret; browser does not post to it directly

@@ -210,7 +210,7 @@ export function resolveAllowedOrigin(requestOrigin, allowedOrigins) {
     return requestOrigin || '*';
   }
 
-  return allowedOrigins.includes(requestOrigin) ? requestOrigin : allowedOrigins[0];
+  return isOriginAllowed(requestOrigin, allowedOrigins) ? requestOrigin : allowedOrigins[0];
 }
 
 export function isOriginAllowed(origin, allowedOrigins) {
@@ -218,7 +218,58 @@ export function isOriginAllowed(origin, allowedOrigins) {
     return allowedOrigins.length === 0;
   }
 
-  return allowedOrigins.length === 0 || allowedOrigins.includes(origin);
+  return allowedOrigins.length === 0 || allowedOrigins.some((pattern) => matchesOriginPattern(origin, pattern));
+}
+
+export function matchesOriginPattern(origin, pattern) {
+  if (pattern === '*') {
+    return true;
+  }
+
+  if (origin === pattern) {
+    return true;
+  }
+
+  if (!pattern.includes('*')) {
+    return false;
+  }
+
+  const originUrl = safeParseUrl(origin);
+  const wildcardPattern = parseWildcardOriginPattern(pattern);
+  if (!originUrl || !wildcardPattern) {
+    return false;
+  }
+
+  if (originUrl.protocol !== wildcardPattern.protocol) {
+    return false;
+  }
+
+  if (originUrl.port !== wildcardPattern.port) {
+    return false;
+  }
+
+  return originUrl.hostname.length > wildcardPattern.hostnameSuffix.length && originUrl.hostname.endsWith(`.${wildcardPattern.hostnameSuffix}`);
+}
+
+function parseWildcardOriginPattern(pattern) {
+  const match = String(pattern).match(/^(https?:)\/\/\*\.([^/:]+)(?::(\d+))?$/i);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    protocol: match[1].toLowerCase(),
+    hostnameSuffix: match[2].toLowerCase(),
+    port: match[3] ?? '',
+  };
+}
+
+function safeParseUrl(value) {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
 }
 
 export function getRemoteIp(request) {

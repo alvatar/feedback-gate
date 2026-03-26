@@ -10,7 +10,8 @@
    - deploy as web app
 
 3. In the Worker config:
-   - set `ALLOWED_ORIGINS` to the site(s) that can embed the widget
+   - set `ALLOWED_ORIGINS` to the site origin(s) that can embed the widget
+   - wildcard subdomains are supported, e.g. `https://*.impactmesh.xyz`
    - tune `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_SEC` as needed
 
 4. On the site:
