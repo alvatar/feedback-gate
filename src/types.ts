@@ -67,6 +67,7 @@ export interface FeedbackAuthProvider {
 export interface FeedbackAuthConfig {
   required?: boolean;
   providers?: FeedbackAuthProvider[];
+  providerOrder?: 'auto' | string[];
   getUser?: () => Promise<FeedbackUser | null> | FeedbackUser | null;
   getHeaders?: () => Promise<Record<string, string>> | Record<string, string>;
   login?: (providerId: string) => Promise<FeedbackUser | null | void> | FeedbackUser | null | void;

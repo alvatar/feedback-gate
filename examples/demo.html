@@ -178,10 +178,13 @@
         },
         auth: {
           required: true,
+          providerOrder: 'auto',
           providers: [
             { id: 'google', label: 'Continue with Google' },
-            { id: 'email', label: 'Continue with email' },
+            { id: 'apple', label: 'Continue with Apple' },
             { id: 'facebook', label: 'Continue with Facebook' },
+            { id: 'wechat', label: 'Continue with WeChat' },
+            { id: 'email', label: 'Continue with email' },
           ],
           getUser: async () => sessionUser,
           login: async (providerId) => {
@@ -191,6 +194,12 @@
                 email: 'demo@gmail.com',
                 name: 'Demo User',
                 provider: 'google',
+              },
+              apple: {
+                id: 'apple-user-1',
+                email: 'demo@privaterelay.appleid.com',
+                name: 'Apple User',
+                provider: 'apple',
               },
               email: {
                 id: 'email-user-1',
@@ -203,6 +212,12 @@
                 email: 'demo@facebook.example',
                 name: 'FB User',
                 provider: 'facebook',
+              },
+              wechat: {
+                id: 'wechat-user-1',
+                email: 'wechat-user@example.cn',
+                name: 'WeChat User',
+                provider: 'wechat',
               },
             };
 
@@ -221,6 +236,7 @@
         strings: {
           title: 'Product feedback',
           description: 'Send a short report. The request is mocked locally on this page.',
+          authDescription: "Your identity won't be shared. This is just to avoid spam",
         },
         message: {
           placeholder: 'I clicked X and expected Y.',

@@ -1,3 +1,4 @@
+import { getOrderedProviders } from './auth-order.js';
 import { FeedbackGateError, prepareSubmission } from './payload.js';
 import { submitFeedback } from './transport.js';
 import {
@@ -48,7 +49,7 @@ const DEFAULT_STRINGS = {
   genericError: 'Unable to send feedback right now.',
   loginRequired: 'Please sign in before submitting feedback.',
   authTitle: 'Sign in to continue',
-  authDescription: 'Choose a provider to verify your identity before sending feedback.',
+  authDescription: "Your identity won't be shared. This is just to avoid spam",
   checkingAuthLabel: 'Checking your sign-in status…',
   signedInPrefix: 'Signed in as',
   shareEmailLabel: 'Share my email with the site owner',
@@ -288,7 +289,7 @@ export class FeedbackGate {
     authStatus.setAttribute('aria-live', 'polite');
     authButtons.className = 'feedback-gate-provider-buttons';
 
-    for (const provider of this.config.auth?.providers ?? []) {
+    for (const provider of getOrderedProviders(this.config.auth)) {
       authButtons.appendChild(this.createProviderButton(provider));
     }
 

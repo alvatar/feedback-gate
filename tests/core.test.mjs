@@ -5,8 +5,11 @@ import {
   FeedbackGateError,
   buildEndpointUrl,
   createSubmissionPayload,
+  detectAutoProviderPriority,
+  getOrderedProviders,
   prepareSubmission,
   submitFeedback,
+  sortProvidersByPriority,
 } from '../dist/index.js';
 
 test('createSubmissionPayload builds the expected shape', async () => {
@@ -130,6 +133,65 @@ test('prepareSubmission rejects missing required auth user', async () => {
       assert.equal(error.message, 'Authentication is required before submitting feedback.');
       return true;
     },
+  );
+});
+
+test('detectAutoProviderPriority prefers WeChat and email for mainland China', () => {
+  assert.deepEqual(
+    detectAutoProviderPriority({
+      language: 'zh-CN',
+      languages: ['zh-CN', 'en-US'],
+      timeZone: 'Asia/Shanghai',
+      platform: 'Linux armv8l',
+      userAgent: 'Mozilla/5.0',
+    }),
+    ['wechat', 'email', 'apple', 'google', 'facebook'],
+  );
+});
+
+test('detectAutoProviderPriority prefers Apple on Apple platforms', () => {
+  assert.deepEqual(
+    detectAutoProviderPriority({
+      language: 'en-US',
+      languages: ['en-US'],
+      timeZone: 'America/New_York',
+      platform: 'MacIntel',
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)',
+    }),
+    ['apple', 'google', 'facebook', 'wechat', 'email'],
+  );
+});
+
+test('getOrderedProviders applies explicit ordering and appends the rest', () => {
+  const ordered = getOrderedProviders({
+    providers: [
+      { id: 'google', label: 'Continue with Google' },
+      { id: 'apple', label: 'Continue with Apple' },
+      { id: 'wechat', label: 'Continue with WeChat' },
+      { id: 'email', label: 'Continue with email' },
+    ],
+    providerOrder: ['wechat', 'email'],
+  });
+
+  assert.deepEqual(
+    ordered.map((provider) => provider.id),
+    ['wechat', 'email', 'apple', 'google'],
+  );
+});
+
+test('sortProvidersByPriority keeps unknown providers at the end', () => {
+  const ordered = sortProvidersByPriority(
+    [
+      { id: 'custom', label: 'Continue with SSO' },
+      { id: 'google', label: 'Continue with Google' },
+      { id: 'email', label: 'Continue with email' },
+    ],
+    ['google', 'email'],
+  );
+
+  assert.deepEqual(
+    ordered.map((provider) => provider.id),
+    ['google', 'email', 'custom'],
   );
 });
 

@@ -1,3 +1,9 @@
+export {
+  getOrderedProviders,
+  detectAutoProviderPriority,
+  sortProvidersByPriority,
+} from './auth-order.js';
+export type { AuthProviderOrderingEnvironment } from './auth-order.js';
 export { FeedbackGate } from './feedback-gate.js';
 export { FeedbackGateError, createSubmissionPayload, prepareSubmission } from './payload.js';
 export { buildEndpointUrl, submitFeedback } from './transport.js';
